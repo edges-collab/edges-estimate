@@ -7,7 +7,7 @@ import pytest
 
 from click.testing import CliRunner
 
-from edges_estimate import edges_estimate
+from edges_estimate import eor_models
 from edges_estimate import cli
 
 

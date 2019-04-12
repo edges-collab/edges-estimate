@@ -100,3 +100,17 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+\.idea/
+
+devel/chains/
+
+devel/HillsChains/clusters/
+
+devel/HillsChains/
+
+devel/real_test/clusters/
+
+devel/real_test/
+
+*.h5
