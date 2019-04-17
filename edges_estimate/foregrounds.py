@@ -116,9 +116,6 @@ class LinLog(Foreground):
 
     def __init__(self, n=5, *args, **kwargs):
         # Need to add n to signature to take it out of the call to __init__
-        print(args)
-        print(kwargs)
-        print(n)
         super().__init__(*args, **kwargs)
 
     def model(self, **p):

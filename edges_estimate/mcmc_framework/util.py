@@ -1,16 +1,19 @@
 import importlib
+from os import path
 
 import numpy as np
 import yaml
-from os import path
-from .likelihood import Param
 from scipy import stats
+
+from .likelihood import Param
+
 
 def _absfile(yml, fname):
     if path.isabs(fname):
         return fname
     else:
         return path.join(path.dirname(path.abspath(yml)), fname)
+
 
 def load_likelihood_from_yaml(fname, **kwargs):
     with open(fname) as f:
@@ -61,7 +64,6 @@ def load_likelihood_from_yaml(fname, **kwargs):
 
     parameters = []
     for pname, p in params.items():
-        print(pname, p)
         # The ref value needs to be made into a scipy.stats object
         ref = p.pop("ref", None)
         if ref:

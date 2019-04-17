@@ -114,3 +114,5 @@ devel/real_test/clusters/
 devel/real_test/
 
 *.h5
+
+*.pdf

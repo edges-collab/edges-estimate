@@ -30,7 +30,7 @@ def main(yaml_file, sampler, sampler_yaml, plot):
 
     sampler = run_mcmc(
         likelihood,
-        sampler=sampler,
+        sampler=sampler_kw.get("sampler", sampler),
         sampler_kw=sampler_kw
     )
 
