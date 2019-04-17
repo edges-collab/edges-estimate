@@ -1,0 +1,54 @@
+likelihood:
+    module: 'edges_estimate.likelihoods'
+    name: 'MultiComponentSpectrumChi2'
+data: 'edges_nature_data_tsky_60plus.npy'
+components:
+    AbsorptionProfile:
+        module: 'edges_estimate.eor_models'
+        data:
+            freqs: 'edges_nature_data_freqs_60plus.npy'
+    LinPoly:
+        module: 'edges_estimate.foregrounds'
+        data:
+            freqs: 'edges_nature_data_freqs_60plus.npy'
+            n: 5
+parameters:
+    include: ["absorption_params.yml"]
+    sigma:
+        min: 0
+        max: 0.1
+    p0:
+        min: 0
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 1800
+            scale: 20
+    p1:
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 78
+            scale: 20
+    p2:
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: -191
+            scale: 20
+    p3:
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 60
+            scale: 20
+    p4:
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 1
+            scale: 20

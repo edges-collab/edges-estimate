@@ -1,0 +1,47 @@
+data: 'edges_nature_data_tsky_full.npy'
+components:
+    AbsorptionProfile:
+        module: 'edges_estimate.eor_models'
+        freqs: 'edges_nature_data_freqs_full.npy'
+    PhysicalSmallIonDepth:
+        module: 'edges_estimate.foregrounds'
+        freqs: 'edges_nature_data_freqs_full.npy'
+parameters:
+    include: ["absorption_params.yml"]
+    b0:
+        min: 10
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 1755
+            scale: 20
+    b1:
+        min: -2
+        max: 0
+        ref:
+            dist: 'norm'
+            loc: -0.07
+            scale: 0.01
+    b2:
+        min: -0.1
+        max: 0.1
+        ref:
+            dist: 'norm'
+            loc: -0.01
+            scale: 0.01
+    b3:
+        min: -0.02
+        max: 0.2
+        ref:
+            dist: 'norm'
+            loc: -0.005
+            scale: 0.005
+    b4:
+        min: 200
+        max: 2000
+        ref:
+            dist: 'norm'
+            loc: 894
+            scale: 20
+fiducial:
+    sigma = 0.01

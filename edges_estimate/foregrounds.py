@@ -104,46 +104,41 @@ class PhysicalLin(Foreground):
 
 
 class LinLog(Foreground):
-    _n=5
-
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, n=5, *args, **kwargs):
 
         # First create the parameters.
-        for i in range(cls._n):
+        for i in range(n):
             setattr(cls, f"p{i}", Parameter(0, latex=r"p_{}".format(i)))
 
         obj = super(LinLog, cls).__new__(cls)
 
         return obj
 
+    def __init__(self, n=5, *args, **kwargs):
+        # Need to add n to signature to take it out of the call to __init__
+        print(args)
+        print(kwargs)
+        print(n)
+        super().__init__(*args, **kwargs)
+
     def model(self, **p):
         logf = np.log(self.f)
         terms = []
         for pp in p:
-            i = int(p[1:])
+            i = int(pp[1:])
             terms.append(p[pp] * logf ** i)
 
         return self.f ** -2.5 * np.sum(terms, axis=0)
 
 
 class LinPoly(LinLog):
-    # def __new__(cls, n=5, *args, **kwargs):
-    #
-    #     # First create the parameters.
-    #     for i in range(n):
-    #         setattr(cls, f"p{i}", Parameter(0, latex=r"p_{}".format(i)))
-    #
-    #     obj = super(LinPoly, cls).__new__(cls)
-    #
-    #     return obj
-
     def model(self, **p):
         """
         Eq. 10 from Hills et al.
         """
         terms = []
         for pp in p:
-            i = int(p[1:])
+            i = int(pp[1:])
             terms.append(p[pp] * self.f ** (i - 2.5))
 
         return np.sum(terms, axis=0)
