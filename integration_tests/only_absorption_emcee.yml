@@ -1,0 +1,2 @@
+sampler: "emcee.yml"
+likelihoods: "only_absorption.yml"

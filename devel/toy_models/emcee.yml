@@ -1,0 +1,7 @@
+sampler: 'emcee'
+init:
+    nwalkers: 40
+    threads: 8
+sample:
+    nsteps: 2000
+    progress: true

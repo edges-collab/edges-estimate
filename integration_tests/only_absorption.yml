@@ -1,0 +1,12 @@
+external_modules: ['edges_estimate']
+likelihoods:
+    low_band_eor:
+        likelihood: 'MultiComponentSpectrumChi2'
+        components:
+            AbsorptionProfile:
+                kwargs:
+                    freqs: 'frequencies.npy'
+                params:
+                    include: "absorption_params.yml"
+        fiducial:
+            sigma: 0.01

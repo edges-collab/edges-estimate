@@ -1,0 +1,36 @@
+p0:
+    min: 0
+    max: 1e5
+    fiducial: 1750
+    ref:
+        dist: 'norm'
+        loc: 2000
+        scale: 20
+p1:
+    min: -1e5
+    max: 1e5
+    ref:
+        dist: 'norm'
+        loc: -720
+        scale: 20
+p2:
+    min: -1e5
+    max: 1e5
+    ref:
+        dist: 'norm'
+        loc: 987
+        scale: 20
+p3:
+    min: -1e5
+    max: 1e5
+    ref:
+        dist: 'norm'
+        loc: -695
+        scale: 20
+p4:
+    min: -1e5
+    max: 1e5
+    ref:
+        dist: 'norm'
+        loc: 179
+        scale: 20

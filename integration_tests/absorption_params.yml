@@ -1,0 +1,28 @@
+A:
+    min: 0
+    max: 20
+    ref:
+        dist: 'norm'
+        loc: 0.55
+        scale: 0.1
+tau:
+    min: 0
+    max: 100
+    ref:
+        dist: 'norm'
+        loc: 7
+        scale: 1
+nu0:
+    min: 60
+    max: 90
+    ref:
+        dist: 'norm'
+        loc: 78
+        scale: 2
+w:
+    min: 1
+    max: 40
+    ref:
+        dist: 'norm'
+        loc: 19
+        scale: 2

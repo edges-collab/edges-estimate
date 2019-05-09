@@ -1,0 +1,2 @@
+sampler: "emcee.yml"
+likelihoods: "two-bands-all-separate.yml"

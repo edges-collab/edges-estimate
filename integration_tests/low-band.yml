@@ -1,0 +1,24 @@
+external_modules: ['edges_estimate']
+likelihoods:
+    low_band:
+        likelihood: 'MultiComponentSpectrumChi2'
+        components:
+            AbsorptionProfile:
+                kwargs:
+                    freqs: 'frequencies.npy'
+                params:
+                    include: "absorption_params.yml"
+            LinPoly:
+                kwargs:
+                    n: 5
+                    freqs: 'frequencies.npy'
+                params:
+                    include: "linpoly_params.yml"
+        params:
+            sigma:
+                max: 1
+                ref:
+                    dist: 'norm'
+                    loc: 0.013
+                    scale: 0.01
+                fiducial: 0.013

@@ -1,11 +1,10 @@
 """
 Models of the foregrounds
 """
-import attr
 import numpy as np
 from cached_property import cached_property
 
-from .mcmc_framework.likelihood import Parameter, Component
+from yabf import Parameter, Component
 
 
 class Foreground(Component):
@@ -16,99 +15,106 @@ class Foreground(Component):
 
         super().__init__(**kwargs)
 
+        self.provides = [f"{self.name}_spectrum"]
+
     @cached_property
     def f(self):
         return self.freqs / self.nuc
 
-    def __call__(self, dct, ctx):
-        ctx[f'{self.__class__.__name__}_spectrum'] = self.model(**dct)
+    def calculate(self, ctx, **params):
+        return self.model(**params)
 
 
-class PhysicalHills(Foreground):
-    """
-    Eq 6. from Hills et al.
-    """
-    Te = Parameter(1000, min=0, max=5000, latex=r"T_e [K]")
-    b0 = Parameter(1750, min=0, max=1e5, latex=r"b_0 [K]")
-    b1 = Parameter(0, latex=r"b_1 [K]")
-    b2 = Parameter(0, latex=r"b_2 [K]")
-    b3 = Parameter(0, latex=r"b_3 [K]")
-    ion_spec_index = Parameter(-2, min=-3, max=-1, latex=r"\alpha_{\rm ion}")
+class _PhysicalBase(Foreground):
+    base_parameters = [
+        Parameter("b0", 1750, min=0, max=1e5, latex=r"b_0 [K]"),
+        Parameter("b1", 0, latex=r"b_1 [K]"),
+        Parameter("b2", 0, latex=r"b_2 [K]"),
+        Parameter("b3", 0, latex=r"b_3 [K]"),
+        Parameter("ion_spec_index", -2, min=-3, max=-1, latex=r"\alpha_{\rm ion}"),
+    ]
 
-    def model(self, Te, **p):
+    def model(self, **p):
         b = [p[f"b{i}"] for i in range(4)]
         alpha = p['ion_spec_index']
 
         x = np.exp(-b[3] * self.f ** alpha)
-        return b[0] * self.f ** (b[1] + b[2] * np.log(self.f) - 2.5) * x + Te * (1 - x)
+        return b[0] * self.f ** (b[1] + b[2] * np.log(self.f) - 2.5) * x, x
 
 
-class PhysicalSmallIonDepth(Foreground):
+class PhysicalHills(_PhysicalBase):
+    """
+    Eq 6. from Hills et al.
+    """
+    base_parameters = _PhysicalBase.base_parameters + [
+        Parameter("Te", 1000, min=0, max=5000, latex=r"T_e [K]"),
+    ]
+
+    def model(self, Te, **p):
+        first_term, x = super().model(**p)
+        return first_term + Te*(1 - x)
+
+
+class PhysicalSmallIonDepth(_PhysicalBase):
     """
     Eq. 7 from Hills et al.
     """
-    b0 = Parameter(1750, min=0, max=1e5, latex=r"b_0 [K]")
-    b1 = Parameter(0, latex=r"b_1 [K]")
-    b2 = Parameter(0, latex=r"b_2 [K]")
-    b3 = Parameter(0, latex=r"b_3 [K]")
-    b4 = Parameter(0, latex=r"b_4 [K]")
-    ion_spec_index = Parameter(-2, min=-3, max=-1, latex=r"\alpha_{\rm ion}")
+    base_parameters = _PhysicalBase.base_parameters + [Parameter("b4", 0, latex=r"b_4 [K]")]
 
     def model(self, **p):
-        b = [p[f"b{i}"] for i in range(5)]
-        alpha = p['ion_spec_index']
-
-        x = np.exp(-b[3] * self.f ** alpha)
-        return b[0] * self.f ** (b[1] + b[2] * np.log(self.f) - 2.5) * x + b[4] / self.f ** 2
+        first_term, x = super().model(p)
+        b4 = p['b4']
+        return first_term + b4 / self.f ** 2
 
     # Possible derived quantities
-    def Te(self, dct, ctx):
+    def Te(self, ctx, **params):
         """Approximate value of Te in the small-ion-depth limit"""
-        return dct['b4'] / dct['b3']
+        return params['b4'] / params['b3']
 
 
 class PhysicalLin(Foreground):
     """
     Eq. 8 from Hills et al.
     """
-    p0 = Parameter(0, latex=r"p_0")
-    p1 = Parameter(0, latex=r"p_1")
-    p2 = Parameter(0, latex=r"p_2")
-    p3 = Parameter(0, latex=r"p_3")
-    p4 = Parameter(0, latex=r"p_4")
+    base_parameters = [Parameter("p0", 1750, min=0, latex=r"p_0")] + \
+                 [Parameter(f'p{i}', 0, latex=r"p_{}".format(i)) for i in range(1, 5)]
 
-    def model(self, p0, p1, p2, p3, p4):
+    def model(self, **p):
+        p = [p[f"p{i}"] for i in range(5)]
+
         return self.f ** -2.5 * (
-            p0 + np.log(self.f) * (p1 + p2 * np.log(self.f))) + p3 * self.f ** -4.5 + p4 * self.f ** -2
+            p[0] + np.log(self.f) * (p[1] + p[2] * np.log(self.f))) + p[3] * self.f ** -4.5 + p[4] * self.f ** -2
 
     # Possible derived parameters
-    def b0(self, dct, ctx):
+    def b0(self, ctx, **p):
         """The corresponding b0 from PhysicalHills"""
-        return dct['p0']
+        return p['p0']
 
-    def b1(self, dct, ctx):
+    def b1(self, ctx, **p):
         """The corresponding b1 from PhysicalHills"""
-        return dct['p1'] / dct['p0']
+        return p['p1'] / p['p0']
 
-    def b2(self, dct, ctx):
+    def b2(self, ctx, **p):
         """The corresponding b2 from PhysicalHills"""
-        return dct['p2'] / dct['p0'] - self.b1(dct, ctx) ** 2 / 2
+        return p['p2'] / p['p0'] - self.b1(ctx, **p) ** 2 / 2
 
-    def b3(self, dct, ctx):
+    def b3(self, ctx, **p):
         """The corresponding b3 from PhysicalHills"""
-        return -dct['p3'] / dct['p0']
+        return -p['p3'] / p['p0']
 
-    def b4(self, dct, ctx):
+    def b4(self, ctx, **p):
         """The corresponding b4 from PhysicalHills"""
-        return dct['p4']
+        return p['p4']
 
 
 class LinLog(Foreground):
     def __new__(cls, n=5, *args, **kwargs):
 
         # First create the parameters.
+        p = []
         for i in range(n):
-            setattr(cls, f"p{i}", Parameter(0, latex=r"p_{}".format(i)))
+            p.append(Parameter(f"p{i}", 0, latex=r"p_{}".format(i)))
+        cls.base_parameters= tuple(p)
 
         obj = super(LinLog, cls).__new__(cls)
 
@@ -116,6 +122,8 @@ class LinLog(Foreground):
 
     def __init__(self, n=5, *args, **kwargs):
         # Need to add n to signature to take it out of the call to __init__
+        self.poly_order = n
+
         super().__init__(*args, **kwargs)
 
     def model(self, **p):
@@ -139,3 +147,27 @@ class LinPoly(LinLog):
             terms.append(p[pp] * self.f ** (i - 2.5))
 
         return np.sum(terms, axis=0)
+
+
+class MultiplicativeBias(Component):
+    base_parameters = [
+        Parameter("bias", 1, min=0, latex=r"b_\cross")
+    ]
+
+    def calculate(self, ctx, **params):
+        for key, val in ctx.item():
+            if key.endswith("_spectrum"):
+                ctx[key] = val * params['mult_bias']
+
+
+class AdditiveBias(Component):
+    base_parameters = [
+        Parameter("bias", 1, min=0, latex=r'b_+')
+    ]
+
+    def calculate(self, ctx, **params):
+        for key, val in ctx.item():
+            if key.endswith("_spectrum"):
+                ctx[key] = val * params['mult_bias']
+
+

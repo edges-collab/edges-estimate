@@ -1,52 +1,52 @@
-likelihood:
-    module: 'edges_estimate.likelihoods'
-    name: 'MultiComponentSpectrumChi2'
-data: 'edges_nature_data_tsky_full.npy'
-components:
-    AbsorptionProfile:
-        module: 'edges_estimate.eor_models'
-        data:
-            freqs: 'edges_nature_data_freqs_full.npy'
-    PhysicalLin:
-        module: 'edges_estimate.foregrounds'
-        data:
-            freqs: 'edges_nature_data_freqs_full.npy'
-parameters:
-    include: ["absorption_params.yml"]
-    p0:
-        min: -1e5
-        max: 1e5
-        ref:
-            dist: 'norm'
-            loc: -15431
-            scale: 100
-    p1:
-        min: -1e5
-        max: 1e5
-        ref:
-            dist: 'norm'
-            loc: -8213
-            scale: 100
-    p2:
-        min: -1e5
-        max: 1e6
-        ref:
-            dist: 'norm'
-            loc: -2582
-            scale: 100
-    p3:
-        min: -1e5
-        max: 1e5
-        ref:
-            dist: 'norm'
-            loc: 200
-            scale: 10
-    p4:
-        min: -1e5
-        max: 1e5
-        ref:
-            dist: 'norm'
-            loc: 16981
-            scale: 100
-fiducial:
-    sigma = 0.01
+external_modules: [ 'edges_estimate' ]
+likelihoods:
+    MultiComponentSpectrumChi2:
+        data_loader: 'npyLoader'
+        data: 'hills_likelihoods/edges_nature_data_tsky_full.npy'
+        components:
+            AbsorptionProfile:
+                kwargs:
+                    freqs: 'hills_likelihoods/edges_nature_data_freqs_full.npy'
+                params:
+                    include: ["absorption_params.yml"]
+            PhysicalLin:
+                kwargs:
+                    freqs: 'hills_likelihoods/edges_nature_data_freqs_full.npy'
+                params:
+                    p0:
+                        min: -100000
+                        max: 100000
+                        ref:
+                            dist: 'norm'
+                            loc: -15431
+                            scale: 100
+                    p1:
+                        min: -100000
+                        max: 100000
+                        ref:
+                            dist: 'norm'
+                            loc: -8213
+                            scale: 100
+                    p2:
+                        min: -100000
+                        max: 1000000
+                        ref:
+                            dist: 'norm'
+                            loc: -2582
+                            scale: 100
+                    p3:
+                        min: -100000
+                        max: 1000000
+                        ref:
+                            dist: 'norm'
+                            loc: 200
+                            scale: 10
+                    p4:
+                        min: -100000
+                        max: 100000
+                        ref:
+                            dist: 'norm'
+                            loc: 16981
+                            scale: 100
+        fiducial:
+            sigma: 0.01

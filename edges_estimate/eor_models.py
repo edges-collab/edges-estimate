@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-from .mcmc_framework.likelihood import Parameter, Component
+from yabf import Parameter, Component
 
 
 def phenom_model(freqs, A, tau, w, nu0):
@@ -11,14 +11,18 @@ def phenom_model(freqs, A, tau, w, nu0):
 
 
 class AbsorptionProfile(Component):
-    A = Parameter(0.5, min=0, latex=r"a_{21}")
-    tau = Parameter(7, min=0, latex=r"\tau")
-    w = Parameter(17.0, min=0)
-    nu0 = Parameter(75, min=0, latex=r"\nu_0")
+    provides = ['eor_spectrum']
+
+    base_parameters = [
+        Parameter("A", 0.5, min=0, latex=r"a_{21}"),
+        Parameter("tau", 7, min=0, latex=r"\tau"),
+        Parameter("w", 17.0, min=0),
+        Parameter("nu0", 75, min=0, latex=r"\nu_0"),
+    ]
 
     def __init__(self, freqs, **kwargs):
         self.freqs = freqs
         super().__init__(**kwargs)
 
-    def __call__(self, dct, ctx):
-        ctx["eor_spectrum"] = phenom_model(self.freqs, **dct)
+    def calculate(self, ctx, **params):
+        return phenom_model(self.freqs, **params)

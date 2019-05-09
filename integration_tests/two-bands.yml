@@ -1,0 +1,95 @@
+external_modules: ['edges_estimate']
+likelihoods:
+    low_band:
+        likelihood: 'MultiComponentSpectrumChi2'
+        params:
+            sigma_low:
+                max: 1
+                ref:
+                    dist: 'norm'
+                    loc: 0.013
+                    scale: 0.001
+                fiducial: 0.013
+                alias_for: 'sigma'
+
+        components:
+            AbsorptionProfile:
+                kwargs:
+                    freqs: 'frequencies.npy'
+            LinPoly:
+                kwargs:
+                    n: 5
+                    freqs: 'frequencies.npy'
+                params:
+                    p0_low:
+                        min: 0
+                        max: 1e5
+                        fiducial: 1750
+                        ref:
+                            dist: 'norm'
+                            loc: 1750
+                            scale: 20
+                        alias_for: 'p0'
+    high_band:
+        likelihood: 'MultiComponentSpectrumChi2'
+        params:
+            sigma_hi:
+                max: 1
+                ref:
+                    dist: 'norm'
+                    loc: 0.005
+                    scale: 0.001
+                fiducial: 0.005
+                alias_for: 'sigma'
+        components:
+            AbsorptionProfile:
+                kwargs:
+                    freqs: 'frequencies_high.npy'
+            LinPoly:
+                kwargs:
+                    n: 5
+                    freqs: 'frequencies_high.npy'
+                params:
+                    p0_hi:
+                        min: 0
+                        max: 1e5
+                        fiducial: 1760
+                        ref:
+                            dist: 'norm'
+                            loc: 1760
+                            scale: 20
+                        alias_for: 'p0'
+params:
+    include: "absorption_params.yml"
+    p1:
+        fiducial: 0
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 0
+            scale: 1
+    p2:
+        fiducial: 0
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 0
+            scale: 1
+    p3:
+        fiducial: 0
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 0
+            scale: 1
+    p4:
+        fiducial: 0
+        min: -1e5
+        max: 1e5
+        ref:
+            dist: 'norm'
+            loc: 0
+            scale: 1

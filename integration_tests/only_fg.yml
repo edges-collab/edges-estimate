@@ -1,0 +1,13 @@
+external_modules: ['edges_estimate']
+likelihoods:
+    low_band_fg:
+        likelihood: 'MultiComponentSpectrumChi2:'
+        components:
+            LinPoly:
+                kwargs:
+                    n: 5
+                    freqs: 'frequencies.npy'
+                params:
+                    include: "linpoly_params.yml"
+        fiducial:
+            sigma: 0.01

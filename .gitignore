@@ -116,3 +116,17 @@ devel/real_test/
 *.h5
 
 *.pdf
+
+.rsync_up.sh
+
+*.paramnames
+
+devel/toy_models/PolyChordChains/clusters/
+
+*.prior_info
+
+devel/toy_models/PolyChordChains/
+
+integration_tests/PolyChordChains/clusters/
+
+integration_tests/PolyChordChains/
