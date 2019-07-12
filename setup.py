@@ -11,7 +11,7 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements = ['Click>=6.0', "cached_property", 'numpy', 'scipy']
+requirements = ['Click>=6.0', "cached_property", 'numpy', 'scipy', 'yabf @ https://github.com/steven-murray/yabf']
 
 setup_requirements = ['pytest-runner', ]
 
