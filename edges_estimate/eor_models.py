@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
+import attr
 import numpy as np
-
 from yabf import Parameter, Component
 
 
@@ -10,6 +10,7 @@ def phenom_model(freqs, A, tau, w, nu0):
     return -A * (1 - np.exp(-tau * np.exp(B))) / (1 - np.exp(-tau))
 
 
+@attr.s
 class AbsorptionProfile(Component):
     provides = ['eor_spectrum']
 
@@ -20,9 +21,7 @@ class AbsorptionProfile(Component):
         Parameter("nu0", 75, min=0, latex=r"\nu_0"),
     ]
 
-    def __init__(self, freqs, **kwargs):
-        self.freqs = freqs
-        super().__init__(**kwargs)
+    freqs = attr.ib(kw_only=True)
 
     def calculate(self, ctx, **params):
         return phenom_model(self.freqs, **params)

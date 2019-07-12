@@ -1,21 +1,21 @@
 """
 Models of the foregrounds
 """
+import attr
 import numpy as np
 from cached_property import cached_property
-
 from yabf import Parameter, Component
 
 
+@attr.s(frozen=True)
 class Foreground(Component):
     """Base class for all foreground models, don't use this directly!"""
-    def __init__(self, freqs, nuc=75.0, **kwargs):
-        self.freqs = freqs
-        self.nuc = nuc  # MHz
+    freqs = attr.ib(kw_only=True)
+    nuc = attr.ib(75.0, kw_only=True, converter=float)
 
-        super().__init__(**kwargs)
-
-        self.provides = [f"{self.name}_spectrum"]
+    @cached_property
+    def provides(self):
+        return [f"{self.name}_spectrum"]
 
     @cached_property
     def f(self):
@@ -52,7 +52,7 @@ class PhysicalHills(_PhysicalBase):
 
     def model(self, Te, **p):
         first_term, x = super().model(**p)
-        return first_term + Te*(1 - x)
+        return first_term + Te * (1 - x)
 
 
 class PhysicalSmallIonDepth(_PhysicalBase):
@@ -76,8 +76,8 @@ class PhysicalLin(Foreground):
     """
     Eq. 8 from Hills et al.
     """
-    base_parameters = [Parameter("p0", 1750, min=0, latex=r"p_0")] + \
-                 [Parameter(f'p{i}', 0, latex=r"p_{}".format(i)) for i in range(1, 5)]
+    base_parameters = [Parameter("p0", fiducial=1750, latex=r"p_0")] + \
+                      [Parameter(f'p{i}', fiducial=0, latex=r"p_{}".format(i)) for i in range(1, 5)]
 
     def model(self, **p):
         p = [p[f"p{i}"] for i in range(5)]
@@ -107,33 +107,44 @@ class PhysicalLin(Foreground):
         return p['p4']
 
 
+@attr.s
 class LinLog(Foreground):
-    def __new__(cls, n=5, *args, **kwargs):
+    poly_order = attr.ib(5, converter=int, kw_only=True)
+
+    @cached_property
+    def base_parameters(self):
+        p = [
+            Parameter("beta", -2.5, min=-5, max=0, latex=r"\beta"),
+            Parameter("p0", 1750, latex=r"p_0")
+        ]
+
+        assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        p = []
-        for i in range(n):
+        for i in range(1, self.poly_order):
             p.append(Parameter(f"p{i}", 0, latex=r"p_{}".format(i)))
-        cls.base_parameters= tuple(p)
-
-        obj = super(LinLog, cls).__new__(cls)
-
-        return obj
-
-    def __init__(self, n=5, *args, **kwargs):
-        # Need to add n to signature to take it out of the call to __init__
-        self.poly_order = n
-
-        super().__init__(*args, **kwargs)
+        return tuple(p)
 
     def model(self, **p):
         logf = np.log(self.f)
         terms = []
-        for pp in p:
-            i = int(pp[1:])
-            terms.append(p[pp] * logf ** i)
+        for i in range(self.poly_order):
+            pp = p[f"p{i}"]
+            terms.append(pp * logf ** i)
 
-        return self.f ** -2.5 * np.sum(terms, axis=0)
+        return self.f ** p['beta'] * np.sum(terms, axis=0)
+
+
+@attr.s
+class Sinusoid(Foreground):
+    base_parameters = [
+        Parameter("amp", 0, min=0, max=1, latex=r"A_{\rm sin}"),
+        Parameter("lambda", 10, min=1, max=30, latex=r'\lambda_{\rm sin}'),
+        Parameter("phase", 0, min=-np.pi, max=np.pi, latex=r"\phi_{\rm sin}")
+    ]
+
+    def model(self, **p):
+        return p['amp'] * np.sin(2*np.pi*self.f/p['lambda'] + p['phase'])
 
 
 class LinPoly(LinLog):
@@ -149,25 +160,48 @@ class LinPoly(LinLog):
         return np.sum(terms, axis=0)
 
 
-class MultiplicativeBias(Component):
-    base_parameters = [
-        Parameter("bias", 1, min=0, latex=r"b_\cross")
-    ]
+@attr.s
+class Bias(Component):
+    x = attr.ib(kw_only=True)
+    centre = attr.ib(1, converter=float, kw_only=True)
+
+    poly_order = attr.ib(1, converter=int, kw_only=True)
+    kind = attr.ib("spectrum", kw_only=True)
+    log = attr.ib(False, kw_only=True)
+    additive = attr.ib(False, kw_only=True, converter=bool)
+
+    @cached_property
+    def base_parameters(self):
+        p = [
+            Parameter("b0", 1, min=-np.inf if self.additive else 0, latex=r"b_0")
+        ]
+
+        assert self.poly_order >= 1, "poly_order must be >= 1"
+
+        # First create the parameters.
+        for i in range(1, self.poly_order):
+            p.append(Parameter(f"b{i}", 0, latex=r"b_{}".format(i)))
+        return tuple(p)
+
+    def evaluate_poly(self, **params):
+        x = self.x/self.centre
+        if self.log:
+            x = np.log(x)
+
+        res = 0
+        for i in range(self.poly_order):
+            p = params[f"b{i}"]
+            res += p * x ** i
+
+        return res
 
     def calculate(self, ctx, **params):
-        for key, val in ctx.item():
-            if key.endswith("_spectrum"):
-                ctx[key] = val * params['mult_bias']
+        bias = self.evaluate_poly(**params)
 
-
-class AdditiveBias(Component):
-    base_parameters = [
-        Parameter("bias", 1, min=0, latex=r'b_+')
-    ]
-
-    def calculate(self, ctx, **params):
-        for key, val in ctx.item():
-            if key.endswith("_spectrum"):
-                ctx[key] = val * params['mult_bias']
-
-
+        for key, val in ctx.items():
+            if key.endswith(self.kind):
+                if self.additive:
+                    ctx[key] += bias
+                    break # only add to one thing, otherwise it's doubling up.
+                else:
+                    ctx[key] *= bias

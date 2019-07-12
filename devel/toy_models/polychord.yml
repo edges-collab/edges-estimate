@@ -1,4 +1,0 @@
-sampler: polychord
-init:
-    nlive: 256
-    base_dir: PolyChordChains
