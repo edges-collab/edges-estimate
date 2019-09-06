@@ -21,7 +21,7 @@ class Foreground(Component):
     def f(self):
         return self.freqs / self.nuc
 
-    def calculate(self, ctx, **params):
+    def calculate(self, ctx=None, **params):
         return self.model(**params)
 
     def model(self, **params):
@@ -161,7 +161,7 @@ class DampedSinusoid(Component):
         Parameter("phase", 0, min=-np.pi, max=np.pi, latex=r"\phi_{\rm sin}")
     ]
 
-    def calculate(self, ctx, **p):
+    def calculate(self, ctx=None, **p):
         models = np.array([v for k, v in ctx.items() if k.endswith("spectrum")])
         amp = np.sum(models, axis=0)
         amp *= p['amp']
