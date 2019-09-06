@@ -24,6 +24,9 @@ class Foreground(Component):
     def calculate(self, ctx, **params):
         return self.model(**params)
 
+    def model(self, **params):
+        pass
+
 
 class _PhysicalBase(Foreground):
     base_parameters = [
@@ -144,7 +147,25 @@ class Sinusoid(Foreground):
     ]
 
     def model(self, **p):
-        return p['amp'] * np.sin(2*np.pi*self.f/p['lambda'] + p['phase'])
+        return p['amp'] * np.sin(2 * np.pi * self.freqs / p['lambda'] + p['phase'])
+
+
+@attr.s
+class DampedSinusoid(Component):
+    freqs = attr.ib(kw_only=True)
+    provides = ('sin_spectrum',)
+
+    base_parameters = [
+        Parameter("amp", 0, min=0, max=1, latex=r"A_{\rm sin}"),
+        Parameter("lambda", 10, min=1, max=30, latex=r'\lambda_{\rm sin}'),
+        Parameter("phase", 0, min=-np.pi, max=np.pi, latex=r"\phi_{\rm sin}")
+    ]
+
+    def calculate(self, ctx, **p):
+        models = np.array([v for k, v in ctx.items() if k.endswith("spectrum")])
+        amp = np.sum(models, axis=0)
+        amp *= p['amp']
+        return amp * np.sin(2 * np.pi * self.freqs / p['lambda'] + p['phase'])
 
 
 class LinPoly(LinLog):
