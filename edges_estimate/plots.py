@@ -51,8 +51,9 @@ def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None,
 
 
 def make_residual_plot_shaded(
-    models, freqs, temps, fname, color=None
+    models, freqs=None, temps=None, color=None
 ):
+    1
     for i, (key, freq) in enumerate(freqs.items()):
         model = models[key]['model']
         temp = temps[key]
@@ -62,4 +63,4 @@ def make_residual_plot_shaded(
         plt.plot(freq, q[2] - temp, color=color or f"C{i}", label=key)
         plt.fill_between(freq, q[1] - temp, q[3] - temp, color=color or f"C{i}", alpha=0.6)
         plt.fill_between(freq, q[0] - temp, q[4] - temp, color=color or f"C{i}", alpha=0.4)
-    plt.savefig(fname)
+
