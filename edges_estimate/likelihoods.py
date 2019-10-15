@@ -4,6 +4,7 @@ from scipy import stats
 from yabf import Likelihood, Parameter
 from cached_property import cached_property
 
+
 @attr.s(frozen=True)
 class Chi2:
     base_parameters = [
@@ -29,12 +30,15 @@ class Chi2:
     def lnl(self, model, **params):
         sigma = self.get_sigma(model, **params)
 
+        if type(sigma) == float:
+            sigma = sigma * np.ones_like(self.data)
+
         # Ensure we don't use flagged channels
-        mask = np.isnan(self.data)
+        mask = np.logical_or(np.isnan(self.data), np.isinf(sigma))
         d = self.data[~mask]
         m = model[~mask]
 
-        nm = stats.norm(loc=m, scale=sigma)
+        nm = stats.norm(loc=m, scale=sigma[mask])
 
         lnl = np.sum(nm.logpdf(d))
         if np.isnan(lnl):
@@ -94,6 +98,7 @@ class MultiComponentChi2SigmaT(MultiComponentChi2):
 
     def get_sigma(self, model, **params):
         return (model / self.T0) ** params['sigma_b'] * params['sigma_a']
+
 
 @attr.s(frozen=True)
 class RadiometricAndWhiteNoise(MultiComponentChi2):
