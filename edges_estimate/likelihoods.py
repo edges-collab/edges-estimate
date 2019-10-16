@@ -155,6 +155,8 @@ class CalibrationChi2(Likelihood):
         Parameter("sigma_scale", 1, min=0, latex=r"f_\sigma")
     ]
 
+    white_noise_sigma = attr.ib(False, convert=bool)
+
     def _reduce(self, ctx, **params):
         for k in ctx:
             if k.endswith("calibration_q"):
@@ -169,7 +171,10 @@ class CalibrationChi2(Likelihood):
         return {"Qp": ctx[key], "curlyQ": ctx[sigma_key]}
 
     def get_sigma(self, curlyQ, Qp, **params):
-        return params['sigma_scale'] * Qp**2 * (1 + curlyQ)
+        if self.white_noise_sigma:
+            return params['sigma_scale']
+        else:
+            return params['sigma_scale'] * Qp**2 * (1 + curlyQ)
 
     def _mock(self, model, **params):
         sigma = self.get_sigma(model, **params)
