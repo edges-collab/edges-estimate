@@ -155,7 +155,7 @@ class CalibrationChi2(Likelihood):
         Parameter("sigma_scale", 1, min=0, latex=r"f_\sigma")
     ]
 
-    white_noise_sigma = attr.ib(False, convert=bool)
+    white_noise_sigma = attr.ib(False, convert=bool, kw_only=True)
 
     def _reduce(self, ctx, **params):
         for k in ctx:
