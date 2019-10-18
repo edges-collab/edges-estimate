@@ -125,7 +125,8 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
         elif isinstance(val, np.ndarray) and val.shape == self.freqs.shape:
             return
         else:
-            raise ValueError("weights must be an array with the same length as freqs")
+            raise ValueError(f"weights must be an array with the same length as freqs."
+                             f"Got weight.shape == {val.shape} and freqs.shape == {self.freqs.shape}")
 
     @cached_property
     def freqs(self):
@@ -184,8 +185,10 @@ class CalibrationChi2(Likelihood):
         lnl = 0
         for source, data in self.data.items():
             sigma = self.get_sigma(model['curlyQ'][source], model['Qp'][source], **params)
-            nm = stats.norm(loc=model['Qp'][source], scale=sigma)
-            lnl += np.sum(nm.logpdf(data))
+
+            lnl += np.sum(-0.5*(np.log(2)+np.log(np.pi) + 2*np.log(sigma) + (model['Qp'][source] - data)**2 / (2 * sigma**2)))
+            # nm = stats.norm(loc=model['Qp'][source], scale=sigma)
+            # lnl += np.sum(nm.logpdf(data))
             if np.isnan(lnl):
                 lnl = -np.inf
                 break

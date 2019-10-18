@@ -5,7 +5,8 @@ import attr
 import numpy as np
 from cached_property import cached_property
 from edges_cal.receiver_calibration_func import power_ratio
-from edges_cal.cal_coefficients import SwitchCorrection, LNA, LoadSpectrum, CalibrationObservation
+from edges_cal.cal_coefficients import SwitchCorrection, LNA, CalibrationObservation
+from edges_cal import receiver_calibration_func as rcf
 from yabf import Component, Parameter
 
 
@@ -42,11 +43,11 @@ class _CalibrationQ(Component):
 
     def get_calibration_curves(self, params):
         # Put coefficients in backwards, because that's how the polynomial works.
-        c1_poly = np.poly1d([params[f'C1_{i}'] for i in range(self.nterms_c1)[::-1]])
-        c2_poly = np.poly1d([params[f'C2_{i}'] for i in range(self.nterms_c2)[::-1]])
-        tunc_poly = np.poly1d([params[f'Tunc_{i}'] for i in range(self.nterms_tunc)[::-1]])
-        tcos_poly = np.poly1d([params[f'Tcos_{i}'] for i in range(self.nterms_tcos)[::-1]])
-        tsin_poly = np.poly1d([params[f'Tsin_{i}'] for i in range(self.nterms_tsin)[::-1]])
+        c1_poly = np.poly1d([params[f'C1_{i}'] for i in range(self.calobs.cterms)[::-1]])
+        c2_poly = np.poly1d([params[f'C2_{i}'] for i in range(self.calobs.cterms)[::-1]])
+        tunc_poly = np.poly1d([params[f'Tunc_{i}'] for i in range(self.calobs.wterms)[::-1]])
+        tcos_poly = np.poly1d([params[f'Tcos_{i}'] for i in range(self.calobs.wterms)[::-1]])
+        tsin_poly = np.poly1d([params[f'Tsin_{i}'] for i in range(self.calobs.wterms)[::-1]])
 
         return (
             c1_poly(self.freq_recentred),
