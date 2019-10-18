@@ -38,7 +38,7 @@ class Chi2:
         d = self.data[~mask]
         m = model[~mask]
 
-        nm = stats.norm(loc=m, scale=sigma[mask])
+        nm = stats.norm(loc=m, scale=sigma[~mask])
 
         lnl = np.sum(nm.logpdf(d))
         if np.isnan(lnl):
