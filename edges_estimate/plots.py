@@ -31,7 +31,7 @@ def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None,
 
         if top_level:
             ctx = {lk_names[0]: ctx}
-            model = {lk_names[0]: ctx}
+            model = {lk_names[0]: model}
 
         for lk_name in lk_names:
 
@@ -53,7 +53,6 @@ def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None,
 def make_residual_plot_shaded(
     models, freqs=None, temps=None, color=None
 ):
-    1
     for i, (key, freq) in enumerate(freqs.items()):
         model = models[key]['model']
         temp = temps[key]
