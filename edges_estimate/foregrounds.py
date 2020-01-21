@@ -139,6 +139,8 @@ class LinLog(Foreground):
         logf = np.log(self.f)
         terms = []
         for i in range(self.poly_order):
+            if i==1:
+                continue
             pp = p[f"p{i}"]
             terms.append(pp * logf ** i)
 
