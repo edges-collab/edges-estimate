@@ -112,6 +112,13 @@ class PhysicalLin(Foreground):
 
 @attr.s
 class LinLog(Foreground):
+    """
+    LinLog model from Memo #122
+
+    .. note:: the model there is slightly ambiguous. Actually taking the Taylor Expansion
+              of the ExpLog model makes it clear that a_1 (here p_1) should be
+              equivalently zero. See Memo #.... for details.
+    """
     poly_order = attr.ib(5, converter=int, kw_only=True)
 
     @cached_property
@@ -124,7 +131,7 @@ class LinLog(Foreground):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        for i in range(1, self.poly_order):
+        for i in range(2, self.poly_order):
             p.append(Parameter(f"p{i}", 0, latex=r"p_{}".format(i)))
         return tuple(p)
 
