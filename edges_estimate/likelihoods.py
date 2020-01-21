@@ -30,7 +30,7 @@ class Chi2:
     def lnl(self, model, **params):
         sigma = self.get_sigma(model, **params)
 
-        if type(sigma) == float:
+        if isinstance(sigma, (float,int)):
             sigma = sigma * np.ones_like(self.data)
 
         # Ensure we don't use flagged channels
@@ -64,7 +64,7 @@ class MultiComponentChi2(Chi2, Likelihood):
 
     def lnl(self, model, **params):
         # return -inf if any bit of the spectrum is negative
-        if self.positive and np.any(model <= 0):
+        if self.positive and np.any(model[~np.isnan(model)] <= 0):
             return -np.inf
 
         return super().lnl(model, **params)
@@ -115,7 +115,7 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
         Parameter("sigma_wn", 0.0, min=0, latex=r"\sigma_{\rm wn}"),
     ]
 
-    integration_time = attr.ib(convert=np.float, kw_only=True)  # in seconds!
+    integration_time = attr.ib(converter=np.float, kw_only=True)  # in seconds!
     weights = attr.ib(1, kw_only=True)
 
     @weights.validator
@@ -156,26 +156,33 @@ class CalibrationChi2(Likelihood):
         Parameter("sigma_scale", 1, min=0, latex=r"f_\sigma")
     ]
 
-    white_noise_sigma = attr.ib(False, convert=bool, kw_only=True)
+    sigma = attr.ib(None, kw_only=True)
+    use_model_sigma = attr.ib(default=False, converter=bool, kw_only=True)
 
     def _reduce(self, ctx, **params):
+        out = {}
         for k in ctx:
             if k.endswith("calibration_q"):
-                key = k
+                out['Qp'] = ctx[k]
                 break
 
         for k in ctx:
             if k.endswith("calibration_qsigma"):
-                sigma_key = k
+                out['curlyQ'] = ctx[k]
                 break
 
-        return {"Qp": ctx[key], "curlyQ": ctx[sigma_key]}
+        return out
 
-    def get_sigma(self, curlyQ, Qp, **params):
-        if self.white_noise_sigma:
+    def get_sigma(self, model, source=None, **params):
+        if self.sigma is not None:
+            if isinstance(self.sigma, dict):
+                return self.sigma[source]
+            else:
+                return self.sigma
+        elif not self.use_model_sigma:
             return params['sigma_scale']
         else:
-            return params['sigma_scale'] * Qp**2 * (1 + curlyQ)
+            return params['sigma_scale'] * model['Qp'][source]**2 * (1 + model['curlyQ'][source])
 
     def _mock(self, model, **params):
         sigma = self.get_sigma(model, **params)
@@ -184,9 +191,12 @@ class CalibrationChi2(Likelihood):
     def lnl(self, model, **params):
         lnl = 0
         for source, data in self.data.items():
-            sigma = self.get_sigma(model['curlyQ'][source], model['Qp'][source], **params)
+            sigma = self.get_sigma(model, source=source, **params)
 
-            lnl += np.sum(-0.5*(np.log(2)+np.log(np.pi) + 2*np.log(sigma) + (model['Qp'][source] - data)**2 / (2 * sigma**2)))
+            lnl += -0.5*np.nansum(
+                (np.log(2) + np.log(np.pi) + 2*np.log(sigma) +
+                      (model['Qp'][source] - data)**2 / (2 * sigma**2))
+            )
             # nm = stats.norm(loc=model['Qp'][source], scale=sigma)
             # lnl += np.sum(nm.logpdf(data))
             if np.isnan(lnl):
