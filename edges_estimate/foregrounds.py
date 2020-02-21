@@ -27,7 +27,7 @@ class Foreground(Component):
     def model(self, **params):
         pass
 
-
+@attr.s(frozen=True)
 class Tcmb(Component):
      T = attr.ib(2.7255,kw_only=True, converter=float)
 
