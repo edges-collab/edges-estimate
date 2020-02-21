@@ -5,6 +5,7 @@
 from .likelihoods import *
 from .foregrounds import *
 from .eor_models import *
+from .calibration import *
 
 __author__ = """Steven Murray"""
 __email__ = 'steven.g.murray@asu.edu'

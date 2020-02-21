@@ -193,9 +193,8 @@ class CalibrationChi2(Likelihood):
         for source, data in self.data.items():
             sigma = self.get_sigma(model, source=source, **params)
 
-            lnl += -0.5*np.nansum(
-                (np.log(2) + np.log(np.pi) + 2*np.log(sigma) +
-                      (model['Qp'][source] - data)**2 / (2 * sigma**2))
+            lnl += -np.nansum(
+                np.log(sigma) + (model['Qp'][source] - data)**2 / (2 * sigma**2)
             )
             # nm = stats.norm(loc=model['Qp'][source], scale=sigma)
             # lnl += np.sum(nm.logpdf(data))
