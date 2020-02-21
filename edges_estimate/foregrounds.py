@@ -27,6 +27,19 @@ class Foreground(Component):
     def model(self, **params):
         pass
 
+@attr.s(frozen=True)
+class Tcmb(Component):
+     T = attr.ib(2.7255,kw_only=True, converter=float)
+
+     @cached_property
+     def provides(self):
+        return [f"{self.name}_scalar"]
+
+     def calculate(self, ctx=None, **params):
+        return self.T
+
+
+
 
 class _PhysicalBase(Foreground):
     base_parameters = [
