@@ -60,7 +60,8 @@ class MultiComponentChi2(Chi2, Likelihood):
 
     def _reduce(self, ctx, **params):
         models = np.array([v for k, v in ctx.items() if k.endswith(self.kind)])
-        return np.sum(models, axis=0)
+        scalars = sum(v for k, v in ctx.items() if k.endswith("scalar"))
+        return np.sum(models, axis=0) + scalars
 
     def lnl(self, model, **params):
         # return -inf if any bit of the spectrum is negative
