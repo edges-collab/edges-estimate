@@ -4,6 +4,13 @@ from getdist import loadMCSamples
 from tqdm import tqdm
 from yabf import load_likelihood_from_yaml, LikelihoodContainer
 
+def get_evidence(mcsamplesr):
+    with open(mcsamplesr+".stats") as f:
+        for line in f:
+            if line.startswith("log(Z)"):
+                evidence = float(line.split("=")[1].lstrip().split(' ')[0])
+                break
+    return evidence
 
 def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None,
                               progress=True):
