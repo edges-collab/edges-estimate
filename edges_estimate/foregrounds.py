@@ -218,7 +218,7 @@ class LinPoly(LinLog):
             i = int(key[1:])
             terms.append(val * self.f ** i)
 
-        return np.sum(terms, axis=0) * self.f**-p['beta']
+        return np.sum(terms, axis=0) * self.f**p['beta']
 
 
 @attr.s
