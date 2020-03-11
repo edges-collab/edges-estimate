@@ -6,14 +6,14 @@ from yabf import load_likelihood_from_yaml, LikelihoodContainer
 
 def get_evidence(mcsamplesr):
     
-    "Read the Bayesian evidence of the Polychord run
+    '''Read the Bayesian evidence of the Polychord run
     ------------------------------------------------
 
     Parameters:
     ------------
     mcsamplesr: str
     The root file path of the run without the extension
-    "
+    '''
 
     with open(mcsamplesr+".stats") as f:
         for line in f:
