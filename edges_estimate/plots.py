@@ -76,7 +76,7 @@ def make_residual_plot_shaded(
 
         q = np.quantile(model, q=(0.04, 0.16, 0.5, 0.84, 0.96), axis=0)
 
-        plt.plot(freq, q[2] - temp, color=color or f"C{i}", label=key)
-        plt.fill_between(freq, q[1] - temp, q[3] - temp, color=color or f"C{i}", alpha=0.6)
-        plt.fill_between(freq, q[0] - temp, q[4] - temp, color=color or f"C{i}", alpha=0.4)
+        plt.plot(freq, temp - q[2], color=color or f"C{i}", label=key)
+        plt.fill_between(freq, temp - q[1], temp - q[3], color=color or f"C{i}", alpha=0.6)
+        plt.fill_between(freq, temp - q[0], temp - q[4], color=color or f"C{i}", alpha=0.4)
 
