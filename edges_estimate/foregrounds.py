@@ -139,7 +139,16 @@ class LinLog(Foreground):
 
     .. note:: the model there is slightly ambiguous. Actually taking the Taylor Expansion
               of the ExpLog model makes it clear that a_1 (here p_1) should be
-              equivalently zero. See Memo #.... for details.
+              equivalently zero. See Memo #122 for details.
+
+              We leave that parameter open, but suggest not letting it vary, and leaving
+              it as zero.
+
+    Parameters
+    ----------
+    poly_order : int
+        The maximum polynomial order will be `poly_order - 1`. There are `poly_order + 1`
+        total parameters, including `beta` and `p1` (which should usually be set to zero).
     """
     poly_order = attr.ib(5, converter=int, kw_only=True)
 
@@ -147,7 +156,8 @@ class LinLog(Foreground):
     def base_parameters(self):
         p = [
             Parameter("beta", -2.5, min=-5, max=0, latex=r"\beta"),
-            Parameter("p0", 1750, latex=r"p_0")
+            Parameter("p0", 1750, latex=r"p_0"),
+            Parameter("p1", 0, latex=r"p_1"),
         ]
 
         assert self.poly_order >= 1, "poly_order must be >= 1"
@@ -200,16 +210,24 @@ class DampedSinusoid(Component):
 
 
 class LinPoly(LinLog):
-    def model(self, **p):
-        """
-        Eq. 10 from Hills et al.
-        """
-        terms = []
-        for pp in p:
-            i = int(pp[1:])
-            terms.append(p[pp] * self.f ** (i - 2.5))
+    """Eq. 10 from Hills et al.
 
-        return np.sum(terms, axis=0)
+    .. note:: The polynomial terms are offset by a prior assumption for beta: -2.5.
+
+    The equation is
+
+    .. math :: T(nu) = (nu/nuc)**-beta * Sum[p_i (nu/nuc)**i]
+    """
+
+    def model(self, **p):
+        terms = []
+        for key, val in p.items():
+            if key == 'beta':
+                continue
+            i = int(key[1:])
+            terms.append(val * self.f ** i)
+
+        return np.sum(terms, axis=0) * self.f**p['beta']
 
 
 @attr.s
