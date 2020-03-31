@@ -122,6 +122,15 @@ class PhysicalLin(Foreground):
         """The corresponding b4 from PhysicalHills"""
         return p['p4']
 
+@attr.s
+class IonContrib(Foreground):
+      """
+      Absorption and emission due to the ionosphere
+      """
+      base_parameters = [Parameter("absorption", fiducial=0, latex=r"\tau")] + \
+                      [Parameter("emissivity", fiducial=0, latex=r"T_{elec}")]
+      def model(self, **p):
+          return p['absorption'] * self.f ** -4.5 + p['emissivity'] * self.f ** -2
 
 @attr.s
 class LinLog(Foreground):
