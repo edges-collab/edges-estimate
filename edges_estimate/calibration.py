@@ -63,14 +63,40 @@ class _CalibrationQ(Component):
         return self.calobs.freq.freq
 
     @cached_property
+    def data_mask(self):
+        """The data itself is averaged_Q from the LoadSpectrum, which may involve different
+        frequencies than the calibration itself. Here we get which elements to actually use."""
+        mask = []
+        for i, flag in enumerate(self.calobs.open.spectrum.freq.mask):
+            if not flag:
+                continue
+            else:
+                mask.append(self.calobs.freq.mask[i])
+        return np.array(mask, dtype=bool)
+
+    @cached_property
     def freq_recentred(self):
         return np.linspace(-1, 1, len(self.freq))
 
     @cached_property
     def provides(self):
-        return [f"{self.name}_calibration_q"]
+        return [f"{self.name}_calibration_q", 'data_mask', 'cal_curves']
 
     def get_calibration_curves(self, params):
+        # Put coefficients in backwards, because that's how the polynomial works.
+        c1, c2, tu, tc, ts = self.get_cal_funcs(params)
+
+        return (
+            c1(self.freq_recentred),
+            c2(self.freq_recentred),
+            tu(self.freq_recentred),
+            tc(self.freq_recentred),
+            ts(self.freq_recentred)
+        )
+
+    def get_cal_funcs(self, params=None):
+        params = self._fill_params(params)
+
         # Put coefficients in backwards, because that's how the polynomial works.
         c1_poly = np.poly1d([params[f'C1_{i}'] for i in range(self.calobs.cterms)[::-1]])
         c2_poly = np.poly1d([params[f'C2_{i}'] for i in range(self.calobs.cterms)[::-1]])
@@ -78,13 +104,7 @@ class _CalibrationQ(Component):
         tcos_poly = np.poly1d([params[f'Tcos_{i}'] for i in range(self.calobs.wterms)[::-1]])
         tsin_poly = np.poly1d([params[f'Tsin_{i}'] for i in range(self.calobs.wterms)[::-1]])
 
-        return (
-            c1_poly(self.freq_recentred),
-            c2_poly(self.freq_recentred),
-            tunc_poly(self.freq_recentred),
-            tcos_poly(self.freq_recentred),
-            tsin_poly(self.freq_recentred)
-        )
+        return c1_poly, c2_poly, tunc_poly, tcos_poly, tsin_poly
 
 
 @attr.s(frozen=True)
@@ -112,7 +132,7 @@ class CalibratorQ(_CalibrationQ):
         }
 
     def calculate(self, ctx=None, **params):
-        scale, offset, tu, tc, ts = self.get_calibration_curves(params)
+        scale, offset, tu, tc, ts = self.get_cal_funcs(params)
 
         Qp = {}
         for name, source in self.calobs._loads.items():
@@ -120,13 +140,13 @@ class CalibratorQ(_CalibrationQ):
 
             a, b = rcf.get_linear_coefficients_from_K(
                 self.Ks[name],
-                scale, offset, tu, tc, ts,
-                T_load=300,
+                scale(self.freq_recentred), offset(self.freq_recentred), tu(self.freq_recentred), tc(self.freq_recentred), ts(self.freq_recentred),
+                t_load=300,
             )
 
             Qp[name] = ((temp_ant - b) / a - 300) / 400
 
-        return Qp
+        return Qp, self.data_mask, {'c1': scale, 'c2': offset, 'tu': tu, 'tc': tc, 'ts': ts}
 
 
 @attr.s(frozen=True)

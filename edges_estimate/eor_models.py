@@ -25,3 +25,6 @@ class AbsorptionProfile(Component):
 
     def calculate(self, ctx, **params):
         return phenom_model(self.freqs, **params)
+
+    def spectrum(self, ctx, **params):
+        return ctx['eor_spectrum']

@@ -3,72 +3,7 @@ import numpy as np
 from scipy import stats
 from yabf import Likelihood, Parameter
 from cached_property import cached_property
-
-
-@attr.s(frozen=True)
-class Chi2:
-    base_parameters = [
-        Parameter("sigma", 0.013, min=0, latex=r"\sigma")
-    ]
-
-    sigma = attr.ib(None, kw_only=True)
-
-    def get_sigma(self, model, **params):
-        if self.sigma is not None:
-            if "sigma" in self.active_params_dct:
-                # Act as if sigma is important
-                return params['sigma'] * self.sigma
-            else:
-                return self.sigma
-        else:
-            return params['sigma']
-
-    def _mock(self, model, **params):
-        sigma = self.get_sigma(model, **params)
-        return model + np.random.normal(loc=0, scale=sigma, size=len(model))
-
-    def lnl(self, model, **params):
-        sigma = self.get_sigma(model, **params)
-
-        if isinstance(sigma, (float,int)):
-            sigma = sigma * np.ones_like(self.data)
-
-        # Ensure we don't use flagged channels
-        mask = np.logical_or(np.isnan(self.data), np.isinf(sigma))
-        d = self.data[~mask]
-        m = model[~mask]
-
-        nm = stats.norm(loc=m, scale=sigma[~mask])
-
-        lnl = np.sum(nm.logpdf(d))
-        if np.isnan(lnl):
-            lnl = -np.inf
-        return lnl
-
-    # ===== Potential Derived Quantities
-    def residual(self, model, ctx, **params):
-        return self.data - model
-
-    def rms(self, model, ctx, **params):
-        return np.sqrt(np.mean((model - self.data) ** 2))
-
-
-@attr.s(frozen=True)
-class MultiComponentChi2(Chi2, Likelihood):
-    kind = attr.ib("spectrum", validator=attr.validators.instance_of(str), kw_only=True)
-    positive = attr.ib(True, converter=bool, kw_only=True)
-
-    def _reduce(self, ctx, **params):
-        models = np.array([v for k, v in ctx.items() if k.endswith(self.kind)])
-        scalars = sum(v for k, v in ctx.items() if k.endswith("scalar"))
-        return np.sum(models, axis=0) + scalars
-
-    def lnl(self, model, **params):
-        # return -inf if any bit of the spectrum is negative
-        if self.positive and np.any(model[~np.isnan(model)] <= 0):
-            return -np.inf
-
-        return super().lnl(model, **params)
+from yabf.chi2 import Chi2, MultiComponentChi2
 
 
 def _positive(x):
@@ -150,8 +85,7 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
 
 @attr.s(frozen=True)
 class CalibrationChi2(Likelihood):
-    """
-    data should be passed as a dict of {source: qp}
+    """Data should be passed as a dict of {source: qp}.
     """
     base_parameters = [
         Parameter("sigma_scale", 1, min=0, latex=r"f_\sigma")
@@ -172,12 +106,14 @@ class CalibrationChi2(Likelihood):
                 out['curlyQ'] = ctx[k]
                 break
 
+        out['data_mask'] = ctx['data_mask']
+
         return out
 
     def get_sigma(self, model, source=None, **params):
         if self.sigma is not None:
             if isinstance(self.sigma, dict):
-                return self.sigma[source]
+                return self.sigma[source][model['data_mask']]
             else:
                 return self.sigma
         elif not self.use_model_sigma:
@@ -193,9 +129,8 @@ class CalibrationChi2(Likelihood):
         lnl = 0
         for source, data in self.data.items():
             sigma = self.get_sigma(model, source=source, **params)
-
             lnl += -np.nansum(
-                np.log(sigma) + (model['Qp'][source] - data)**2 / (2 * sigma**2)
+                np.log(sigma) + (model['Qp'][source] - data[model['data_mask']])**2 / (2 * sigma**2)
             )
             # nm = stats.norm(loc=model['Qp'][source], scale=sigma)
             # lnl += np.sum(nm.logpdf(data))
