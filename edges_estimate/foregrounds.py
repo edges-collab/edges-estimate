@@ -151,6 +151,13 @@ class LinLog(Foreground):
         total parameters, including `beta` and `p1` (which should usually be set to zero).
     """
     poly_order = attr.ib(5, converter=int, kw_only=True)
+    use_p1 = attr.ib(False, converter=bool)
+
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()
+
+        if not self.use_p1 and 'p1' in self.child_active_param_dct:
+            raise ValueError("You are attempting to fit p1, but it won't affect anything!")
 
     @cached_property
     def base_parameters(self):
@@ -167,15 +174,22 @@ class LinLog(Foreground):
             p.append(Parameter(f"p{i}", 0, latex=r"p_{}".format(i)))
         return tuple(p)
 
-    def model(self, **p):
-        logf = np.log(self.f)
-        terms = []
-        for i in range(self.poly_order):
-            if i==1:
-                continue
-            pp = p[f"p{i}"]
-            terms.append(pp * logf ** i)
+    @cached_property
+    def logf(self):
+        return np.log(self.f)
 
+    @cached_property
+    def basis(self):
+        return np.array([
+            self.logf**i for i in range(self.poly_order)
+        ])
+
+    def model(self, **p):
+        pp = [p[f"p{i}"] for i in range(self.poly_order)]
+        if not self.use_p1:
+            pp[1] = 0
+
+        terms = [pp[i] * self.basis[i] for i in range(self.poly_order)]
         return self.f ** p['beta'] * np.sum(terms, axis=0)
 
 
