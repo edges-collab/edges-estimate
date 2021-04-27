@@ -8,7 +8,7 @@ from cached_property import cached_property
 from edges_cal import receiver_calibration_func as rcf
 from edges_cal.cal_coefficients import SwitchCorrection, LNA, CalibrationObservation
 from edges_cal.receiver_calibration_func import power_ratio
-from yabf import Component, Parameter
+from yabf import Component, Parameter, ParameterVector
 import logging
 from edges_io.logging import logger
 
@@ -37,25 +37,22 @@ class _CalibrationQ(Component):
     def calobs(self):
         if self._calobs is not None:
             return self._calobs
-        else:
-            if not self.path:
-                raise ValueError("if calobs is not given, path must be")
 
-            logger.setLevel(self._log_level)
-            return CalibrationObservation(path=self.path, **self.calobs_args)
+        if not self.path:
+            raise ValueError("if calobs is not given, path must be")
+
+        logger.setLevel(self._log_level)
+        return CalibrationObservation(path=self.path, **self.calobs_args)
 
     @cached_property
     def base_parameters(self):
-        c1_terms = [Parameter(f"C1_{i}", 1 if not i else 0, latex=rf"C^1_{i}") for i
-                    in range(self.calobs.cterms)]
-        c2_terms = [Parameter(f"C2_{i}", 0, latex=rf"C^2_{i}") for i in range(self.calobs.cterms)]
-        tunc_terms = [Parameter(f"Tunc_{i}", 0, latex=r"T^{\rm unc}_{%s}" % i) for i in
-                      range(self.calobs.wterms)]
-        tcos_terms = [Parameter(f"Tcos_{i}", 0, latex=r"T^{\rm cos}_{%s}" % i) for i in
-                      range(self.calobs.wterms)]
-        tsin_terms = [Parameter(f"Tsin_{i}", 0, latex=r"T^{\rm sin}_{%s}" % i) for i in
-                      range(self.calobs.wterms)]
-
+        c1_terms = ParameterVector("C1", fiducial=0, length=self.calobs.cterms, latex=r"C^1_%s").get_params()
+        c2_terms = ParameterVector("C2", fiducial=0, length=self.calobs.cterms, latex=r"C^2_%s").get_params()
+        
+        tunc_terms = ParameterVector("Tunc", fiducial=0, length=self.calobs.wterms, latex=r"T^{\rm unc}_{%s}").get_params()
+        tcos_terms = ParameterVector("Tcos", fiducial=0, length=self.calobs.wterms, latex=r"T^{\rm cos}_{%s}").get_params()
+        tsin_terms = ParameterVector("Tsin", fiducial=0, length=self.calobs.wterms, latex=r"T^{\rm sin}_{%s}").get_params()
+        
         return tuple(c1_terms + c2_terms + tunc_terms + tcos_terms + tsin_terms)
 
     @cached_property
@@ -174,7 +171,7 @@ class AntennaQ(_CalibrationQ):
     def calculate(self, ctx=None, **params):
         scale, offset, tu, tc, ts = self.get_calibration_curves(params)
 
-        temp_ant = sum([v for k, v in ctx.items() if k.endswith('spectrum')])
+        temp_ant = sum(v for k, v in ctx.items() if k.endswith('spectrum'))
         gamma_ant = self.antenna.get_s11_correction_model()(self.freq)
 
         return power_ratio(
