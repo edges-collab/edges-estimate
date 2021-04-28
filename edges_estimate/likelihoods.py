@@ -4,7 +4,7 @@ from scipy import stats
 from yabf import Likelihood, Parameter
 from cached_property import cached_property
 from yabf.chi2 import Chi2, MultiComponentChi2
-
+from edges_cal import receiver_calibration_func as rcf
 
 def _positive(x):
     assert x > 0
@@ -163,3 +163,96 @@ class CalibrationChi2(Likelihood):
 
     def rms_ambient(self, model, ctx, **params):
         return np.sqrt(np.mean((model['Qp']['ambient'] - self.data['ambient']) ** 2))
+
+
+@attr.s(frozen=True)
+class CalibrationPlus(Likelihood):
+    """Data should be passed as a dict of {source: qp}.
+    """
+    base_parameters = [
+        Parameter("sigma_scale", 1, min=0, latex=r"f_\sigma")
+    ]
+
+    sigma = attr.ib(None, kw_only=True)
+    spec_sigma = attr.ib(None, kw_only=True)
+    freq = attr.ib(None, kw_only=True)
+    K = attr.ib(None, kw_only=True)
+    
+    def _reduce(self, ctx, **params):
+        out = {}
+        for k in ctx:
+            if k.endswith("calibration_q"):
+                out['Qp'] = ctx[k]
+                break
+
+        for k in ctx:
+            if k.endswith("calibration_qsigma"):
+                out['curlyQ'] = ctx[k]
+                break
+
+        out['spectrum'] = np.sum([val for key, val in ctx.items() if key.endswith('spectrum')], axis=0)
+        out['cal_curves'] = ctx['cal_curves']
+        out['data_mask'] = ctx['data_mask']
+
+        out['recal_spec'] = self.recalibrate(
+            self.freq, self.data['uncal_spectrum'], self.K, 
+            ctx['cal_curves']['c1'], ctx['cal_curves']['c2'], ctx['cal_curves']['tu'], ctx['cal_curves']['tc'], 
+            ctx['cal_curves']['ts']
+        )
+        return out
+
+
+    def recalibrate(self, freq, uncal, K, scale, offset, tu, tc, ts):
+        a, b = rcf.get_linear_coefficients_from_K(
+            K, scale(freq), offset(freq), tu(freq), tc(freq), ts(freq), t_load=300,
+        )
+
+        return uncal*a + b
+
+    def get_sigma(self, model, source=None, **params):
+        if self.sigma is not None:
+            if isinstance(self.sigma, dict):
+                return self.sigma[source][model['data_mask']]
+            else:
+                return self.sigma
+        else:
+            return params['sigma_scale']
+
+    def _mock(self, model, **params):
+        sigma = self.get_sigma(model, **params)
+        return model + np.random.normal(loc=0, scale=sigma, size=len(model))
+
+    def lnl(self, model, **params):
+        lnl = 0
+        for source, data in self.data['Q'].items():
+            sigma = self.get_sigma(model, source=source, **params)
+            lnl += -np.nansum(
+                np.log(sigma) + (model['Qp'][source] - data[model['data_mask']])**2 / (2 * sigma**2)
+            )
+            if np.isnan(lnl):
+                lnl = -np.inf
+                break
+        
+        # Ensure we don't use flagged channels
+        mask = ~np.isnan(model['recal_spec'])
+        d = model['recal_spec'][mask]
+        m = model['spectrum'][mask]
+
+        sigma = self.spec_sigma
+
+        if isinstance(sigma, (float, int)):
+            sigma = sigma * np.ones_like(d)
+
+        s = sigma[mask][:, mask] if sigma.ndim == 2 else sigma[mask]
+
+        if s.ndim <=2 or is_diagonal(s):
+            if s.ndim == 2:
+                s = np.diag(s)
+            nm = stats.norm(loc=m, scale=s)
+        else:
+            nm = stats.multivariate_normal(mean=m, cov=s, allow_singular=True)
+
+        lnl += np.sum(nm.logpdf(d))
+        if np.isnan(lnl):
+            lnl = -np.inf
+        return lnl
