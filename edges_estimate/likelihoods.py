@@ -172,7 +172,7 @@ class CalibrationChi2(Likelihood):
         names = list(self.child_active_param_dct.keys())
         
         if isinstance(samples, (Path, str)):
-            samples = loadMCSamples(samples)
+            samples = loadMCSamples(samples).samples
 
         if indices is None:
             indices = list(range(len(samples)))
