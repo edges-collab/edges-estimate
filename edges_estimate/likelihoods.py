@@ -214,7 +214,7 @@ class CalibrationChi2(Likelihood):
             (c1, c2, tunc, tcos, tsin),
             calibrator.get_calibration_curves({name: val for name, val in zip(names, ml_params)}),
             calibrator.get_calibration_curves(
-                {apar.name:apar.fiducial for apar in cal_lk.child_active_params}
+                {apar.name:apar.fiducial for apar in self.child_active_params}
             )
         )):
             perc = np.percentile(thing, [16, 50, 84], axis=0)
