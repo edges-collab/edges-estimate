@@ -228,6 +228,7 @@ class CalibrationChi2(Likelihood):
         ax[-1].set_xlabel("Frequency [MHz]")
         ax[0].legend()
 
+
 @attr.s(frozen=True)
 class CalibrationPlus(Likelihood):
     """Data should be passed as a dict of {source: qp}.
