@@ -6,8 +6,9 @@ from .likelihoods import CalibrationChi2
 from .calibration import CalibratorQ
 from pathlib import Path
 import yaml
+from yabf import load_likelihood_from_yaml
 
-def create_calibration_config_from_calobs(calobs: CalibrationObservation, fname: Optional[str] = None, bounds: bool=True, direc: Optional[Union[str, Path]]):
+def create_calibration_config_from_calobs(calobs: CalibrationObservation, fname: Optional[str] = None, bounds: bool=True, direc: Optional[Union[str, Path]]) -> Tuple[Path, CalibrationChi2]:
     direc = Path(direc)
 
     file_name = fname or f"{calobs.path.name}_l{calobs.freq.min:.2f}MHz_h{calobs.freq.max}MHz_c{calobs.cterms}_w{calobs.wterms}{'bounds' if bounds else '_no_bounds'}"
@@ -57,7 +58,6 @@ def create_calibration_config_from_calobs(calobs: CalibrationObservation, fname:
                         }
                     }
                 }
-
             }
         }
     }
@@ -65,4 +65,4 @@ def create_calibration_config_from_calobs(calobs: CalibrationObservation, fname:
     with open((direc / file_name).with_suffix(".config.yml"), 'w') as fl:
         yaml.dump(config, fl)
 
-    print(f"Wrote config to {(direc / file_name).with_suffix(".config.yml")}")
+    return (direc / file_name).with_suffix(".config.yml"), load_likelihood_from_yaml((direc / file_name).with_suffix(".config.yml"))
