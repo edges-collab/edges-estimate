@@ -5,6 +5,7 @@ from yabf import Likelihood, Parameter
 from cached_property import cached_property
 from yabf.chi2 import Chi2, MultiComponentChi2
 from edges_cal import receiver_calibration_func as rcf
+from getdist import loadMCSamples
 
 def _positive(x):
     assert x > 0
@@ -164,7 +165,67 @@ class CalibrationChi2(Likelihood):
     def rms_ambient(self, model, ctx, **params):
         return np.sqrt(np.mean((model['Qp']['ambient'] - self.data['ambient']) ** 2))
 
+    def get_polys(self, samples, indices=None):
+        """Get the polynomial curves from an MCSamples posterior."""
+        names = list(self.child_active_param_dct.keys())
+        
+        if isinstance(samples, (Path, str)):
+            samples = loadMCSamples(samples)
 
+        if indices is None:
+            indices = list(range(len(samples)))
+        if isinstance(indices, int):
+            indices = list(range(indices))
+            
+        c1 = np.zeros((len(indices), len(self['calibrator'].freq)))
+        c2 = np.zeros((len(indices), len(self['calibrator'].freq)))
+        tunc = np.zeros((len(indices), len(self['calibrator'].freq)))
+        tcos = np.zeros((len(indices), len(self['calibrator'].freq)))
+        tsin = np.zeros((len(indices), len(self['calibrator'].freq)))
+        
+        for ix in indices:
+            params = {name: v for name, v in zip(names,samples[ix])}
+            c1[ix], c2[ix], tunc[ix], tcos[ix], tsin[ix] = self['calibrator'].get_calibration_curves(params)
+            
+        return c1, c2, tunc, tcos, tsin
+
+    def plot_mc_curves(self, samples, indices=None):
+        fig, ax = plt.subplots(5,1, sharex=True, gridspec_kw={"hspace": 0}, figsize=(10, 8))
+        freq = self['calibrator'].freq
+        calibrator = self['calibrator']
+        names = list(calibrator.child_active_param_dct.keys())
+
+        ml_params = np.concatenate(
+            (calibrator.calobs.C1_poly.coefficients[::-1], 
+            calibrator.calobs.C2_poly.coefficients[::-1], 
+            calibrator.calobs.Tunc_poly.coefficients[::-1],
+            calibrator.calobs.Tcos_poly.coefficients[::-1], 
+            calibrator.calobs.Tsin_poly.coefficients[::-1]
+            )
+        )
+
+        c1, c2, tunc, tcos, tsin = self.get_polys(samples, indices=indices)
+
+
+        for i, (name, thing, ml_thing, fid) in enumerate(zip(
+            (r'$C_1$', r'$C_2$', r'$T_{\rm unc}$', r'$T_{\rm cos}$', r'$T_{\rm sin}$'), 
+            (c1, c2, tunc, tcos, tsin),
+            calibrator.get_calibration_curves({name: val for name, val in zip(names, ml_params)}),
+            calibrator.get_calibration_curves(
+                {apar.name:apar.fiducial for apar in cal_lk.child_active_params}
+            )
+        )):
+            perc = np.percentile(thing, [16, 50, 84], axis=0)
+            ax[i].fill_between(freq, perc[0], perc[2], alpha=0.5)
+            ax[i].plot(freq, perc[1], label='Median MCMC')
+            ax[i].plot(freq, ml_thing, label='MAP')
+            #ax[i].plot(freq, fid, label='Iterative')
+            
+            ax[i].set_ylabel(name)
+            
+        ax[-1].set_xlabel("Frequency [MHz]")
+        ax[0].legend()
+        
 @attr.s(frozen=True)
 class CalibrationPlus(Likelihood):
     """Data should be passed as a dict of {source: qp}.
