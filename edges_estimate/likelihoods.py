@@ -7,6 +7,7 @@ from yabf.chi2 import Chi2, MultiComponentChi2
 from edges_cal import receiver_calibration_func as rcf
 from getdist import loadMCSamples
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 def _positive(x):
     assert x > 0
