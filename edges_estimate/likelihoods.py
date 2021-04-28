@@ -172,7 +172,7 @@ class CalibrationPlus(Likelihood):
     base_parameters = [
         Parameter("sigma_scale", 1, min=0, latex=r"f_\sigma")
     ]
-
+    Q = attr.ib(kw_only=True)
     sigma = attr.ib(None, kw_only=True)
     spec_sigma = attr.ib(None, kw_only=True)
     freq = attr.ib(None, kw_only=True)
@@ -224,7 +224,7 @@ class CalibrationPlus(Likelihood):
 
     def lnl(self, model, **params):
         lnl = 0
-        for source, data in self.data['Q'].items():
+        for source, data in self.Q.items():
             sigma = self.get_sigma(model, source=source, **params)
             lnl += -np.nansum(
                 np.log(sigma) + (model['Qp'][source] - data[model['data_mask']])**2 / (2 * sigma**2)
@@ -243,14 +243,9 @@ class CalibrationPlus(Likelihood):
         if isinstance(sigma, (float, int)):
             sigma = sigma * np.ones_like(d)
 
-        s = sigma[mask][:, mask] if sigma.ndim == 2 else sigma[mask]
+        s = sigma[mask]
 
-        if s.ndim <=2 or is_diagonal(s):
-            if s.ndim == 2:
-                s = np.diag(s)
-            nm = stats.norm(loc=m, scale=s)
-        else:
-            nm = stats.multivariate_normal(mean=m, cov=s, allow_singular=True)
+        nm = stats.norm(loc=m, scale=s)
 
         lnl += np.sum(nm.logpdf(d))
         if np.isnan(lnl):
