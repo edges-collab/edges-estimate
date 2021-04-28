@@ -6,6 +6,7 @@ from cached_property import cached_property
 from yabf.chi2 import Chi2, MultiComponentChi2
 from edges_cal import receiver_calibration_func as rcf
 from getdist import loadMCSamples
+import matplotlib.pyplot as plt
 
 def _positive(x):
     assert x > 0
@@ -225,7 +226,7 @@ class CalibrationChi2(Likelihood):
             
         ax[-1].set_xlabel("Frequency [MHz]")
         ax[0].legend()
-        
+
 @attr.s(frozen=True)
 class CalibrationPlus(Likelihood):
     """Data should be passed as a dict of {source: qp}.
