@@ -38,14 +38,14 @@ def create_calibration_config_from_calobs(
         prms[kind] = {}
         poly = getattr(calobs, f"{kind}_poly")
         prms[kind]["length"] = len(poly.coefficients)
-        prms[kind]["fiducial"] = list(poly.coefficients[::-1])
+        prms[kind]["fiducial"] = [float(p) for p in poly.coefficients[::-1]]
 
         if bounds:
             prms[kind]["min"] = [
-                coeff - 20 * np.abs(coeff) for coeff in poly.coefficients[::-1]
+                float(coeff - 20 * np.abs(coeff)) for coeff in poly.coefficients[::-1]
             ]
             prms[kind]["max"] = [
-                coeff + 20 * np.abs(coeff) for coeff in poly.coefficients[::-1]
+                float(coeff + 20 * np.abs(coeff)) for coeff in poly.coefficients[::-1]
             ]
 
     config = {
