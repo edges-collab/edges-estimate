@@ -61,7 +61,7 @@ external_modules:
   - edges_estimate
 likelihoods:
   calibration:
-    class: CalibrationChi2"
+    class: CalibrationChi2
     data: !npz {fname}.data.npz
     kwargs:
       use_model_sigma: false
