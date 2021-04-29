@@ -74,6 +74,8 @@ def create_calibration_config_from_calobs(
                                     "ignore_times_percent": calobs.open.spectrum.ignore_times_percent,
                                     "cache_dir": str(calobs.open.spectrum.cache_dir),
                                 },
+                                "run_num": calobs.io.run_num,
+                                "repeat_num": calobs.io.s11.repeat_num,
                             },
                         },
                     }
