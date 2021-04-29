@@ -20,7 +20,7 @@ def create_calibration_config_from_calobs(
 
     fname = (
         fname
-        or f"{calobs.path.name}_l{calobs.freq.min:.2f}MHz_h{calobs.freq.max}MHz_c{calobs.cterms}_w{calobs.wterms}{'bounds' if bounds else '_no_bounds'}"
+        or f"R{calobs.io.receiver}_{calobs.io.ambient_temp}C_{calobs.io.year}_{calobs.io.month}_{calobs.io.day}_{int(calobs.freq.min)}-{int(calobs.freq.max)}MHz_c{calobs.cterms}_w{calobs.wterms}{'_bounds' if bounds else '_no_bounds'}"
     )
 
     # Write out necessary data files
