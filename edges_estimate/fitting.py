@@ -1,9 +1,9 @@
 """Provides extra routines for fitting that are not in yabf."""
-from edges_cal.modelling import Model
-from yabf import Component
 import numpy as np
-from scipy.optimize import minimize
+from edges_cal.modelling import Model
 from scipy import stats
+from scipy.optimize import minimize
+from yabf import Component
 
 
 class SemiLinearFit:
@@ -20,14 +20,14 @@ class SemiLinearFit:
         self.sigma = sigma
 
     def get_eor(self, p):
-        return self.eor(params=p)['eor_spectrum']
+        return self.eor(params=p)["eor_spectrum"]
 
     def fg_fit(self, p):
         eor = self.get_eor(p)
         resid = self.spectrum - eor
         return self.fg.fit(
             ydata=resid,
-            weights=1 / self.sigma ** 2 if hasattr(self.sigma, '__len__') else None
+            weights=1 / self.sigma ** 2 if hasattr(self.sigma, "__len__") else None,
         )
 
     def fg_params(self, p):
@@ -38,8 +38,10 @@ class SemiLinearFit:
 
     def neg_lk(self, p):
         resid = self.get_resid(p)
-        if hasattr(self.sigma, 'ndim') and self.sigma.ndim == 2:
-            norm_obj = stats.multivariate_normal(mean=np.zeros_like(resid), cov=self.sigma)
+        if hasattr(self.sigma, "ndim") and self.sigma.ndim == 2:
+            norm_obj = stats.multivariate_normal(
+                mean=np.zeros_like(resid), cov=self.sigma
+            )
         else:
             norm_obj = stats.norm(loc=0, scale=self.sigma)
 
