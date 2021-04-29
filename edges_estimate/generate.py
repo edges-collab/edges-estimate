@@ -64,7 +64,7 @@ def create_calibration_config_from_calobs(
                         "class": "CalibratorQ",
                         "params": prms,
                         "kwargs": {
-                            "path": str(calobs.path),
+                            "path": str(calobs.original_path),
                             "calobs_args": {
                                 "f_low": float(calobs.freq.min),
                                 "f_high": float(calobs.freq.max),
@@ -72,7 +72,7 @@ def create_calibration_config_from_calobs(
                                 "wterms": calobs.wterms,
                                 "load_kwargs": {
                                     "ignore_times_percent": calobs.open.spectrum.ignore_times_percent,
-                                    "cache_dir": calobs.open.spectrum.cache_dir,
+                                    "cache_dir": str(calobs.open.spectrum.cache_dir),
                                 },
                             },
                         },
