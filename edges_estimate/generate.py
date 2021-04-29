@@ -61,10 +61,10 @@ external_modules:
 likelihoods:
   calibration:
     class: CalibrationChi2
-    data: !npz {fname}.data.npz
+    data: !npz {direc.absolute()/fname}.data.npz
     kwargs:
       use_model_sigma: false
-      sigma: !npz {fname}.sigma.npz
+      sigma: !npz {direc.absolute()/fname}.sigma.npz
     components:
       calibrator:
         class: CalibratorQ
