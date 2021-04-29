@@ -275,7 +275,7 @@ class RecalibratedSpectrum(Chi2, Likelihood):
             "cal_curves": ctx["cal_curves"],
             "data_mask": ctx["data_mask"],
             "recal_spec": self.recalibrate(
-                self.freq,
+                ctx['freq_obj'].normalize(self.freq),
                 self.data["uncal_spectrum"],
                 self.K,
                 ctx["cal_curves"]["c1"],
@@ -290,6 +290,8 @@ class RecalibratedSpectrum(Chi2, Likelihood):
         a, b = rcf.get_linear_coefficients_from_K(
             K, scale(freq), offset(freq), tu(freq), tc(freq), ts(freq), t_load=300,
         )
+        print(a)
+        print(b)
 
         return uncal * a + b
 
@@ -306,6 +308,8 @@ class RecalibratedSpectrum(Chi2, Likelihood):
 
         s = sigma[mask]
 
+        print(np.sum(m), np.sum(s), np.sum(d))
+        print(np.any(np.isnan(m)), np.any(np.isnan(s)), np.any(np.isnan(d)))
         nm = stats.norm(loc=m, scale=s)
 
         lnl = np.sum(nm.logpdf(d))

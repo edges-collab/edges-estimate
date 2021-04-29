@@ -97,7 +97,7 @@ class _CalibrationQ(Component):
 
     @cached_property
     def provides(self):
-        return [f"{self.name}_calibration_q", "data_mask", "cal_curves"]
+        return [f"{self.name}_calibration_q", "data_mask", "cal_curves", 'freq_obj']
 
     def get_calibration_curves(self, params):
         # Put coefficients in backwards, because that's how the polynomial works.
@@ -184,6 +184,7 @@ class CalibratorQ(_CalibrationQ):
             Qp,
             self.data_mask,
             {"c1": scale, "c2": offset, "tu": tu, "tc": tc, "ts": ts},
+            self.calobs.freq
         )
 
 

@@ -15,12 +15,17 @@ def write_yaml_dict(dct, indent=0):
         yaml.dump(dct, default_flow_style=False).split("\n")
     )
 
+def write_with_indent(str, indent=0):
+  return ("\n"+"  "*indent).join(str.split("\n"))
+
 
 def create_calibration_config_from_calobs(
     calobs: CalibrationObservation,
     fname: Optional[str] = None,
     bounds: bool = True,
     direc: Optional[Union[str, Path]] = Path("."),
+    save_lk_independently: bool=True,
+    save_cmp_independently: bool=True
 ) -> Tuple[Path, CalibrationChi2]:
     direc = Path(direc)
 
@@ -54,43 +59,58 @@ def create_calibration_config_from_calobs(
                 float(coeff + 20 * np.abs(coeff)) for coeff in poly.coefficients[::-1]
             ]
 
+    path = direc.absolute() / fname
+    cmp_config = f"""
+name: calibrator
+class: CalibratorQ
+params:
+  {write_yaml_dict(prms, indent=1)}
+kwargs:
+  path: {calobs.io.original_path}
+  calobs_args:
+    f_low: {float(calobs.freq.min)}
+    f_high: {float(calobs.freq.max)}
+    cterms: {calobs.cterms}
+    wterms: {calobs.wterms}
+    load_kwargs:
+      ignore_times_percent: {calobs.open.spectrum.ignore_times_percent}
+      cache_dir: {calobs.open.spectrum.cache_dir}
+    run_num:
+      {write_yaml_dict(calobs.io.run_num, indent=3)}
+    repeat_num:
+      {write_yaml_dict(calobs.io.s11.repeat_num, indent=3)}
+"""
+    if save_cmp_independently:
+        with open(path.with_suffix(".component.config.yml"), "w") as fl:
+          fl.write(cmp_config)
+
+    lk_config = f"""
+name: calibration
+class: CalibrationChi2
+data: !npz {path}.data.npz
+kwargs:
+  use_model_sigma: false
+  sigma: !npz {path}.sigma.npz
+components:
+  - {write_with_indent(cmp_config, 2) if not save_cmp_independently else path.with_suffix(".component.config.yml")}
+"""
+
+    if save_lk_independently:
+        with open(path.with_suffix(".likelihood.config.yml"), "w") as fl:
+          fl.write(lk_config)
+
     config = f"""
 name: {fname}
 external_modules:
   - edges_estimate
 likelihoods:
-  calibration:
-    class: CalibrationChi2
-    data: !npz {direc.absolute()/fname}.data.npz
-    kwargs:
-      use_model_sigma: false
-      sigma: !npz {direc.absolute()/fname}.sigma.npz
-    components:
-      calibrator:
-        class: CalibratorQ
-        params:
-          {write_yaml_dict(prms, indent=5)}
-        kwargs:
-          path: {calobs.io.original_path}
-          calobs_args:
-            f_low: {float(calobs.freq.min)}
-            f_high: {float(calobs.freq.max)}
-            cterms: {calobs.cterms}
-            wterms: {calobs.wterms}
-            load_kwargs:
-              ignore_times_percent: {calobs.open.spectrum.ignore_times_percent}
-              cache_dir: {calobs.open.spectrum.cache_dir}
-            run_num:
-              {write_yaml_dict(calobs.io.run_num, indent=7)}
-            repeat_num:
-              {write_yaml_dict(calobs.io.s11.repeat_num, indent=7)}
-
+  - {write_with_indent(lk_config, 2) if not save_lk_independently else path.with_suffix(".likelihood.config.yml")}
 """
 
-    with open((direc / fname).with_suffix(".config.yml"), "w") as fl:
+    with open(path.with_suffix(".config.yml"), "w") as fl:
         fl.write(config)
 
     return (
-        (direc / fname).with_suffix(".config.yml"),
-        load_likelihood_from_yaml((direc / fname).with_suffix(".config.yml")),
+        path.with_suffix(".config.yml"),
+        load_likelihood_from_yaml(path.with_suffix(".config.yml")),
     )
