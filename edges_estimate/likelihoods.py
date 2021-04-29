@@ -299,7 +299,7 @@ class RecalibratedSpectrum(Chi2, Likelihood):
         d = model["recal_spec"][mask]
         m = model["spectrum"][mask]
 
-        sigma = self.get_sigma()
+        sigma = self.get_sigma(model)
 
         if isinstance(sigma, (float, int)):
             sigma = sigma * np.ones_like(d)
