@@ -53,10 +53,10 @@ def create_calibration_config_from_calobs(
         "likelihoods": {
             "calibration": {
                 "class": "CalibrationChi2",
-                "data": str(direc / fname).with_suffix(".data.npz"),
+                "data": str((direc / fname).with_suffix(".data.npz")),
                 "kwargs": {
                     "use_model_sigma": False,
-                    "sigma": str(direc / fname).with_suffix(".sigma.npz"),
+                    "sigma": str((direc / fname).with_suffix(".sigma.npz")),
                 },
                 "components": {
                     "calibrator": {
