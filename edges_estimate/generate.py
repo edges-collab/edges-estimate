@@ -35,6 +35,7 @@ def create_calibration_config_from_calobs(
 
     prms = {}
     for kind in ["C1", "C2", "Tunc", "Tcos", "Tsin"]:
+        prms[kind] = {}
         poly = getattr(calobs, f"{kind}_poly")
         prms[kind]["length"] = len(poly.coefficients)
         prms[kind]["fiducial"] = list(poly.coefficients[::-1])
