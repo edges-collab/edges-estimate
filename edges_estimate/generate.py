@@ -5,6 +5,7 @@ from edges_cal import CalibrationObservation
 from pathlib import Path
 from typing import Optional, Tuple, Union
 from yabf import load_likelihood_from_yaml
+from yabf.core.yaml import FileToLoad
 
 from .calibration import CalibratorQ
 from .likelihoods import CalibrationChi2
@@ -54,10 +55,10 @@ def create_calibration_config_from_calobs(
         "likelihoods": {
             "calibration": {
                 "class": "CalibrationChi2",
-                "data": f"!npz {fname}.data.npz",
+                "data": FileToLoad(f"{fname}.data.npz"),
                 "kwargs": {
                     "use_model_sigma": False,
-                    "sigma": f"!npz {fname}.sigma.npz",
+                    "sigma": FileToLoad(f"{fname}.sigma.npz"),
                 },
                 "components": {
                     "calibrator": {
