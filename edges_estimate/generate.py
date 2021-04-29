@@ -54,8 +54,11 @@ def create_calibration_config_from_calobs(
         "likelihoods": {
             "calibration": {
                 "class": "CalibrationChi2",
-                "data": f"{fname}.data.npz",
-                "kwargs": {"use_model_sigma": False, "sigma": f"{fname}.sigma.npz",},
+                "data": f"!npz {fname}.data.npz",
+                "kwargs": {
+                    "use_model_sigma": False,
+                    "sigma": f"!npz {fname}.sigma.npz",
+                },
                 "components": {
                     "calibrator": {
                         "class": "CalibratorQ",
