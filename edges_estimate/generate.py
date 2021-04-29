@@ -13,7 +13,7 @@ from .likelihoods import CalibrationChi2
 
 def write_yaml_dict(dct, indent=0):
     return ("\n" + " " * 2 * indent).join(
-        yaml.dump(dct, default_flow_style=True).split("\n")
+        yaml.dump(dct, default_flow_style=False).split("\n")
     )
 
 
@@ -70,7 +70,7 @@ likelihoods:
       calibrator:
         class: CalibratorQ
         params:
-{write_yaml_dict(prms, indent=5)}
+          {write_yaml_dict(prms, indent=5)}
         kwargs:
           path: {calobs.io.original_path}
           calobs_args:
@@ -82,9 +82,9 @@ likelihoods:
               ignore_times_percent: {calobs.open.spectrum.ignore_times_percent}
               cache_dir: {calobs.open.spectrum.cache_dir}
             run_num:
-{write_yaml_dict(calobs.io.run_num, indent=7)}
+              {write_yaml_dict(calobs.io.run_num, indent=7)}
             repeat_num:
-{write_yaml_dict(calobs.io.s11.repeat_num, indent=7)}
+              {write_yaml_dict(calobs.io.s11.repeat_num, indent=7)}
 
 """
 
