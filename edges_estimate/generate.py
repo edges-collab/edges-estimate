@@ -18,7 +18,7 @@ def create_calibration_config_from_calobs(
 ) -> Tuple[Path, CalibrationChi2]:
     direc = Path(direc)
 
-    file_name = (
+    fname = (
         fname
         or f"{calobs.path.name}_l{calobs.freq.min:.2f}MHz_h{calobs.freq.max}MHz_c{calobs.cterms}_w{calobs.wterms}{'bounds' if bounds else '_no_bounds'}"
     )
@@ -48,7 +48,7 @@ def create_calibration_config_from_calobs(
             ]
 
     config = {
-        "name": file_name,
+        "name": fname,
         "external_modules": ["edges_estimate"],
         "likelihoods": {
             "calibration": {
@@ -81,10 +81,10 @@ def create_calibration_config_from_calobs(
         },
     }
 
-    with open((direc / file_name).with_suffix(".config.yml"), "w") as fl:
+    with open((direc / fname).with_suffix(".config.yml"), "w") as fl:
         yaml.dump(config, fl)
 
     return (
-        (direc / file_name).with_suffix(".config.yml"),
-        load_likelihood_from_yaml((direc / file_name).with_suffix(".config.yml")),
+        (direc / fname).with_suffix(".config.yml"),
+        load_likelihood_from_yaml((direc / fname).with_suffix(".config.yml")),
     )
