@@ -49,44 +49,40 @@ def create_calibration_config_from_calobs(
                 float(coeff + 20 * np.abs(coeff)) for coeff in poly.coefficients[::-1]
             ]
 
-    config = {
-        "name": fname,
-        "external_modules": ["edges_estimate"],
-        "likelihoods": {
-            "calibration": {
-                "class": "CalibrationChi2",
-                "data": FileToLoad(f"{fname}.data.npz"),
-                "kwargs": {
-                    "use_model_sigma": False,
-                    "sigma": FileToLoad(f"{fname}.sigma.npz"),
-                },
-                "components": {
-                    "calibrator": {
-                        "class": "CalibratorQ",
-                        "params": prms,
-                        "kwargs": {
-                            "path": str(calobs.io.original_path),
-                            "calobs_args": {
-                                "f_low": float(calobs.freq.min),
-                                "f_high": float(calobs.freq.max),
-                                "cterms": calobs.cterms,
-                                "wterms": calobs.wterms,
-                                "load_kwargs": {
-                                    "ignore_times_percent": calobs.open.spectrum.ignore_times_percent,
-                                    "cache_dir": str(calobs.open.spectrum.cache_dir),
-                                },
-                                "run_num": calobs.io.run_num,
-                                "repeat_num": calobs.io.s11.repeat_num,
-                            },
-                        },
-                    }
-                },
-            }
-        },
-    }
+    config = f"""
+name: {fname},
+external_modules:
+  - edges_estimate
+likelihoods:
+  calibration:
+    class: CalibrationChi2"
+    data: !npz {fname}.data.npz
+    kwargs:
+      use_model_sigma: false
+      sigma: !npz {fname}.sigma.npz
+    components:
+      calibrator:
+        class: CalibratorQ
+        params:
+          {yaml.dump(prms)}
+        kwargs:
+          path: {calobs.io.original_path}
+          calobs_args:
+            f_low: {float(calobs.freq.min)}
+            f_high: {float(calobs.freq.max)}
+            cterms: {calobs.cterms}
+            wterms: {calobs.wterms}
+            load_kwargs:
+              ignore_times_percent: {calobs.open.spectrum.ignore_times_percent}
+              cache_dir: {calobs.open.spectrum.cache_dir}
+            run_num:
+              {yaml.dump(calobs.io.run_num)},
+            repeat_num:
+              {yaml.dump(calobs.io.s11.repeat_num)}
+"""
 
     with open((direc / fname).with_suffix(".config.yml"), "w") as fl:
-        yaml.dump(config, fl)
+        fl.write(config)
 
     return (
         (direc / fname).with_suffix(".config.yml"),
