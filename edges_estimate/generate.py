@@ -11,6 +11,12 @@ from .calibration import CalibratorQ
 from .likelihoods import CalibrationChi2
 
 
+def write_yaml_dict(dct, indent=0):
+    return ("\n" + " " * 2 * indent).join(
+        yaml.dump(dct, default_flow_style=True).split("\n")
+    )
+
+
 def create_calibration_config_from_calobs(
     calobs: CalibrationObservation,
     fname: Optional[str] = None,
@@ -50,7 +56,7 @@ def create_calibration_config_from_calobs(
             ]
 
     config = f"""
-name: {fname},
+name: {fname}
 external_modules:
   - edges_estimate
 likelihoods:
@@ -64,7 +70,7 @@ likelihoods:
       calibrator:
         class: CalibratorQ
         params:
-          {yaml.dump(prms)}
+{write_yaml_dict(prms, indent=5)}
         kwargs:
           path: {calobs.io.original_path}
           calobs_args:
@@ -76,9 +82,10 @@ likelihoods:
               ignore_times_percent: {calobs.open.spectrum.ignore_times_percent}
               cache_dir: {calobs.open.spectrum.cache_dir}
             run_num:
-              {yaml.dump(calobs.io.run_num)},
+{write_yaml_dict(calobs.io.run_num, indent=7)}
             repeat_num:
-              {yaml.dump(calobs.io.s11.repeat_num)}
+{write_yaml_dict(calobs.io.repeat_num, indent=7)}
+
 """
 
     with open((direc / fname).with_suffix(".config.yml"), "w") as fl:
