@@ -64,7 +64,7 @@ def create_calibration_config_from_calobs(
                         "class": "CalibratorQ",
                         "params": prms,
                         "kwargs": {
-                            "path": str(calobs.original_path),
+                            "path": str(calobs.io.original_path),
                             "calobs_args": {
                                 "f_low": float(calobs.freq.min),
                                 "f_high": float(calobs.freq.max),
