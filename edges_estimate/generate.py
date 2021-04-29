@@ -5,7 +5,6 @@ from edges_cal import CalibrationObservation
 from pathlib import Path
 from typing import Optional, Tuple, Union
 from yabf import load_likelihood_from_yaml
-from yabf.core.yaml import FileToLoad
 
 from .calibration import CalibratorQ
 from .likelihoods import CalibrationChi2
