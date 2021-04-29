@@ -66,8 +66,8 @@ def create_calibration_config_from_calobs(
                         "kwargs": {
                             "path": str(calobs.path),
                             "calobs_args": {
-                                "f_low": calobs.freq.min,
-                                "f_high": calobs.freq.max,
+                                "f_low": float(calobs.freq.min),
+                                "f_high": float(calobs.freq.max),
                                 "cterms": calobs.cterms,
                                 "wterms": calobs.wterms,
                                 "load_kwargs": {
