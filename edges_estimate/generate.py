@@ -84,7 +84,7 @@ likelihoods:
             run_num:
 {write_yaml_dict(calobs.io.run_num, indent=7)}
             repeat_num:
-{write_yaml_dict(calobs.io.repeat_num, indent=7)}
+{write_yaml_dict(calobs.io.s11.repeat_num, indent=7)}
 
 """
 
