@@ -7,7 +7,7 @@ import numpy as np
 from attr import validators as vld
 from cached_property import cached_property
 from edges_cal import receiver_calibration_func as rcf
-from edges_cal.cal_coefficients import LNA, CalibrationObservation, SwitchCorrection
+from edges_cal.cal_coefficients import LNA, CalibrationObservation, LoadS11
 from edges_cal.receiver_calibration_func import power_ratio
 from edges_io.logging import logger
 from yabf import Component, Parameter, ParameterVector
@@ -195,17 +195,17 @@ class AntennaQ(_CalibrationQ):
 
     Parameters
     ----------
-    antenna : :class:`~edges_cal.cal_coefficients.SwitchCorrection` or
+    antenna : :class:`~edges_cal.cal_coefficients.LoadS11` or
         :class:`~edges_cal.cal_coefficients.LoadSpectrum`
         The properties of the antenna. If a `LoadSpectrum`, assumes that the true temperature
-        is known. If a `SwitchCorrection`, assumes that the true temperature is forward-modelled
+        is known. If a `LoadS11`, assumes that the true temperature is forward-modelled
         by subcomponents.
     receiver : :class:`~edges_cal.cal_coefficients.LNA`
         The S11 of the reciever/LNA.
     """
 
     antenna = attr.ib(
-        kw_only=True, validator=attr.validators.instance_of(SwitchCorrection)
+        kw_only=True, validator=attr.validators.instance_of(LoadS11)
     )
     receiver = attr.ib(kw_only=True, validator=attr.validators.instance_of(LNA))
 
