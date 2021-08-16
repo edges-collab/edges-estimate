@@ -6,7 +6,7 @@ from attr import validators as vld
 import numpy as np
 from cached_property import cached_property
 from edges_cal import receiver_calibration_func as rcf
-from edges_cal.cal_coefficients import SwitchCorrection, LNA, CalibrationObservation
+from edges_cal.cal_coefficients import CalibrationObservation
 from edges_cal.receiver_calibration_func import power_ratio
 from yabf import Component, Parameter
 import logging
@@ -149,43 +149,43 @@ class CalibratorQ(_CalibrationQ):
         return Qp, self.data_mask, {'c1': scale, 'c2': offset, 'tu': tu, 'tc': tc, 'ts': ts}
 
 
-@attr.s(frozen=True)
-class AntennaQ(_CalibrationQ):
-    """Component providing calibration Q_P for calibrator sources ambient, hot_load,
-    open, short.
+# @attr.s(frozen=True)
+# class AntennaQ(_CalibrationQ):
+#     """Component providing calibration Q_P for calibrator sources ambient, hot_load,
+#     open, short.
 
-    Parameters
-    ----------
-    antenna : :class:`~edges_cal.cal_coefficients.SwitchCorrection` or
-        :class:`~edges_cal.cal_coefficients.LoadSpectrum`
-        The properties of the antenna. If a `LoadSpectrum`, assumes that the true temperature
-        is known. If a `SwitchCorrection`, assumes that the true temperature is forward-modelled
-        by subcomponents.
-    receiver : :class:`~edges_cal.cal_coefficients.LNA`
-        The S11 of the reciever/LNA.
-    """
-    antenna = attr.ib(kw_only=True, validator=attr.validators.instance_of(SwitchCorrection))
-    receiver = attr.ib(kw_only=True, validator=attr.validators.instance_of(LNA))
+#     Parameters
+#     ----------
+#     antenna : :class:`~edges_cal.cal_coefficients.SwitchCorrection` or
+#         :class:`~edges_cal.cal_coefficients.LoadSpectrum`
+#         The properties of the antenna. If a `LoadSpectrum`, assumes that the true temperature
+#         is known. If a `SwitchCorrection`, assumes that the true temperature is forward-modelled
+#         by subcomponents.
+#     receiver : :class:`~edges_cal.cal_coefficients.LNA`
+#         The S11 of the reciever/LNA.
+#     """
+#     antenna = attr.ib(kw_only=True, validator=attr.validators.instance_of(SwitchCorrection))
+#     receiver = attr.ib(kw_only=True, validator=attr.validators.instance_of(LNA))
 
-    @cached_property
-    def freq(self):
-        return self.antenna.freq.freq
+#     @cached_property
+#     def freq(self):
+#         return self.antenna.freq.freq
 
-    def calculate(self, ctx=None, **params):
-        scale, offset, tu, tc, ts = self.get_calibration_curves(params)
+#     def calculate(self, ctx=None, **params):
+#         scale, offset, tu, tc, ts = self.get_calibration_curves(params)
 
-        temp_ant = sum([v for k, v in ctx.items() if k.endswith('spectrum')])
-        gamma_ant = self.antenna.get_s11_correction_model()(self.freq)
+#         temp_ant = sum([v for k, v in ctx.items() if k.endswith('spectrum')])
+#         gamma_ant = self.antenna.get_s11_correction_model()(self.freq)
 
-        return power_ratio(
-            scale=scale,
-            offset=offset,
-            temp_cos=tc,
-            temp_sin=ts,
-            temp_unc=tu,
-            temp_ant=temp_ant,
-            gamma_ant=gamma_ant,
-            gamma_rec=self.receiver.get_s11_correction_model()(self.freq),
-            temp_noise_source=400,
-            temp_load=300
-        )
+#         return power_ratio(
+#             scale=scale,
+#             offset=offset,
+#             temp_cos=tc,
+#             temp_sin=ts,
+#             temp_unc=tu,
+#             temp_ant=temp_ant,
+#             gamma_ant=gamma_ant,
+#             gamma_rec=self.receiver.get_s11_correction_model()(self.freq),
+#             temp_noise_source=400,
+#             temp_load=300
+#         )
