@@ -1,18 +1,22 @@
-# -*- coding: utf-8 -*-
 import attr
 import numpy as np
-from yabf import Parameter, Component
+from yabf import Component, Parameter
 
 
 def phenom_model(freqs, A, tau, w, nu0):
-    """ really bad inverse gaussian thing."""
-    B = 4 * (freqs - nu0) ** 2 / w ** 2 * np.log(-1 / tau * np.log((1 + np.exp(-tau)) / 2))
+    """really bad inverse gaussian thing."""
+    B = (
+        4
+        * (freqs - nu0) ** 2
+        / w ** 2
+        * np.log(-1 / tau * np.log((1 + np.exp(-tau)) / 2))
+    )
     return -A * (1 - np.exp(-tau * np.exp(B))) / (1 - np.exp(-tau))
 
 
 @attr.s
 class AbsorptionProfile(Component):
-    provides = ['eor_spectrum']
+    provides = ["eor_spectrum"]
 
     base_parameters = [
         Parameter("A", 0.5, min=0, latex=r"a_{21}"),
@@ -27,4 +31,4 @@ class AbsorptionProfile(Component):
         return phenom_model(self.freqs, **params)
 
     def spectrum(self, ctx, **params):
-        return ctx['eor_spectrum']
+        return ctx["eor_spectrum"]

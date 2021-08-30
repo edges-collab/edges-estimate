@@ -48,4 +48,3 @@ parameters:
             dist: 'norm'
             loc: 800
             scale: 10
-

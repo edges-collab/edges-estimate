@@ -1,39 +1,42 @@
-import matplotlib.pyplot as plt
 import numpy as np
 from getdist import loadMCSamples
+from matplotlib import pyplot as plt
 from tqdm import tqdm
-from yabf import load_likelihood_from_yaml, LikelihoodContainer
+from yabf import LikelihoodContainer, load_likelihood_from_yaml
+
 
 def get_evidence(mcsamplesr):
-    
-    '''Read the Bayesian evidence of the Polychord run
+
+    """Read the Bayesian evidence of the Polychord run
     ------------------------------------------------
 
     Parameters:
     ------------
     mcsamplesr: str
     The root file path of the run without the extension
-    '''
+    """
 
-    with open(mcsamplesr+".stats") as f:
+    with open(mcsamplesr + ".stats") as f:
         for line in f:
             if line.startswith("log(Z)"):
-                evidence = float(line.split("=")[1].lstrip().split(' ')[0])
+                evidence = float(line.split("=")[1].lstrip().split(" ")[0])
                 break
     return evidence
 
-def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None,
-                              progress=True):
+
+def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None, progress=True):
     if type(mcsamples) == str:
         mcsamples = loadMCSamples(mcsamples)
 
     if n is not None:
-        samples = mcsamples.samples[np.random.choice(mcsamples.samples.shape[0], size=n)]
+        samples = mcsamples.samples[
+            np.random.choice(mcsamples.samples.shape[0], size=n)
+        ]
     else:
         samples = mcsamples.samples
 
     out = {}
-    lk = load_likelihood_from_yaml(mcsamples.rootname + '.yml')
+    lk = load_likelihood_from_yaml(mcsamples.rootname + ".yml")
 
     top_level = True
     if isinstance(lk, LikelihoodContainer):
@@ -56,27 +59,28 @@ def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None,
                 out[lk_name] = {}
 
             if "model" not in out[lk_name]:
-                out[lk_name]['model'] = []
+                out[lk_name]["model"] = []
 
-            out[lk_name]['model'].append(model[lk_name])
+            out[lk_name]["model"].append(model[lk_name])
 
-            for extra in (extras or []):
+            for extra in extras or []:
                 if extra in ctx[lk_name]:
                     out[lk_name][extra] = ctx[lk_name][extra]
 
     return out
 
 
-def make_residual_plot_shaded(
-    models, freqs=None, temps=None, color=None
-):
+def make_residual_plot_shaded(models, freqs=None, temps=None, color=None):
     for i, (key, freq) in enumerate(freqs.items()):
-        model = models[key]['model']
+        model = models[key]["model"]
         temp = temps[key]
 
         q = np.quantile(model, q=(0.04, 0.16, 0.5, 0.84, 0.96), axis=0)
 
         plt.plot(freq, temp - q[2], color=color or f"C{i}", label=key)
-        plt.fill_between(freq, temp - q[1], temp - q[3], color=color or f"C{i}", alpha=0.6)
-        plt.fill_between(freq, temp - q[0], temp - q[4], color=color or f"C{i}", alpha=0.4)
-
+        plt.fill_between(
+            freq, temp - q[1], temp - q[3], color=color or f"C{i}", alpha=0.6
+        )
+        plt.fill_between(
+            freq, temp - q[0], temp - q[4], color=color or f"C{i}", alpha=0.4
+        )
