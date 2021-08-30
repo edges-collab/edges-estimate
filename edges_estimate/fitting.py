@@ -1,13 +1,13 @@
 """Provides extra routines for fitting that are not in yabf."""
 import numpy as np
-from edges_cal.modelling import Model
+from edges_cal.modelling import FixedLinearModel
 from scipy import stats
 from scipy.optimize import minimize
 from yabf import Component
 
 
 class SemiLinearFit:
-    def __init__(self, fg: Model, eor: Component, spectrum, sigma):
+    def __init__(self, fg: FixedLinearModel, eor: Component, spectrum, sigma):
         """Perform a quick fit to data with a sum of linear and non-linear models.
 
         Useful for fitting foregrounds and EoR at the same time, where the EoR model is
