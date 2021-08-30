@@ -389,30 +389,37 @@ class PartialLinearModel(Chi2, Likelihood):
         elif np.all(var==0):
             var = np.ones_like(var)
 
+        data = data[~np.isinf(var)]
+        basis = fit.model.basis[:, ~np.isinf(var)]
+        resid = fit.residual[~np.isinf(var)]
+        var = var[~np.isinf(var)]
+        
         logdetSig = np.sum(var) if self.variance_func is not None else 0
         
         try:
             logdetCinv = self.logdetCinv
         except AttributeError:
-            logdetCinv = np.log(np.linalg.det((fit.model.basis / var).dot(fit.model.basis.T)))
+            logdetCinv = np.log(np.linalg.det((basis / var).dot(basis.T)))
             
+        data[np.isinf(var)] = np.nan
+
         if self.version == 'mine':
-            lnl = - 0.5 * (logdetSig + logdetCinv + np.sum(data*fit.residual/var))
+            lnl = - 0.5 * (logdetSig + logdetCinv + np.nansum(data*resid/var))
         elif self.version == 'keith': 
-            lnl =  - 0.5 * (logdetSig + logdetCinv + np.sum(fit.residual**2/var))
+            lnl =  - 0.5 * (logdetSig + logdetCinv + np.nansum(resid**2/var))
         elif self.version == 'raul':
-            A = fit.model.basis
-            B = A.dot(fit.residual/var)
+            A = basis
+            B = A.dot(resid/var)
             try:
                 Q = self.Q
             except AttributeError:
                 Q = (A / var).dot(A.T)
-            lnl = -0.5*(logdetCinv +  logdetSig + B.T.dot(np.linalg.inv(Q).dot(B)) + np.sum(fit.residual**2/var))
+            lnl = -0.5*(logdetCinv +  logdetSig + B.T.dot(np.linalg.inv(Q).dot(B)) + np.sum(resid**2/var))
         elif self.version == 'raul-full':
             try:
                 newsig = self.sigma_plus_v_inverse
             except AttributeError:
-                A = fit.model.basis
+                A = basis
                 C = np.linalg.inv(A.T.dot((A/var)))
                 newsig = np.linalg.inv(A.T.dot(C.dot(A)))
                 newsig[np.diag_indices_from(newsig)] -= 1/var
@@ -420,7 +427,7 @@ class PartialLinearModel(Chi2, Likelihood):
                 newsig[np.diag_indices_from(newsig)] += var
                 newsig = np.linalg.inv(newsig)
             
-            lnl = -0.5 * (logdetSig + logdetCinv + fit.residual.dot(newsig.dot(fit.residual)))
+            lnl = -0.5 * (logdetSig + logdetCinv + resid.dot(newsig.dot(resid)))
         
         if np.isnan(lnl):
             lnl = -np.inf
@@ -553,7 +560,7 @@ class NoiseWavesPlusFG:
     freq: np.ndarray = attr.ib()
     _gamma_src: Dict[str, np.ndarray] = attr.ib()
     gamma_ant: np.ndarray = attr.ib()
-    gamma_rec: np.ndarray = attr.ib()
+    gamma_rec: Callable = attr.ib()
     field_freq: np.ndarray = attr.ib()
     c_terms: int = attr.ib(default=5)
     w_terms: int = attr.ib(default=6)
@@ -568,6 +575,12 @@ class NoiseWavesPlusFG:
     def gamma_src(self):
         return {**self._gamma_src, **{'ant': self.gamma_ant}}
 
+    def _freq(self, src: str):
+        if src == 'ant':
+            return self.field_freq
+        else:
+            return self.freq
+
     @cached_property
     def src_names(self) -> List[str]:
         """List of names of inputs sources (eg. ambient, hot_load, open, short)."""
@@ -579,12 +592,13 @@ class NoiseWavesPlusFG:
         # K should be a an array of shape (Nsrc Nnu x Nnoisewaveterms)
         K = np.hstack(
             tuple(
-                rcf.get_K(gamma_rec=self.gamma_rec, gamma_ant=self.gamma_src[name])
-                for name in self.src_names
+                rcf.get_K(
+                    gamma_rec=self.gamma_rec(self._freq(name)), 
+                    gamma_ant=self.gamma_src[name]
+                ) for name in self.src_names
             )
         )
 
-        # Except for the antenna: it should get pure frequencies.
         x = np.concatenate((
             np.tile(self.freq, len(self.src_names)-1 ),
             self.field_freq
@@ -671,7 +685,7 @@ class NoiseWavesPlusFG:
         return attr.evolve(self, parameters=fit.model_parameters)
 
     @classmethod
-    def from_labcal(cls, labcal, field_freq: np.ndarray | None = None, fg_model=LinLog(n_terms=5)) -> NoiseWavesPlusFG:
+    def from_labcal(cls, labcal, fg_model=LinLog(n_terms=5), **kwargs) -> NoiseWavesPlusFG:
         """Initialize a noise wave model from a calibration observation."""
         if fg_model.parameters is not None:
             c2 = (-labcal.calobs.C2_poly.coefficients[::-1]).tolist()
@@ -689,13 +703,13 @@ class NoiseWavesPlusFG:
         return cls(
             freq=labcal.calobs.freq.freq,
             gamma_src=labcal.calobs.s11_correction_models,
-            gamma_rec=labcal.calobs.lna.s11_model(labcal.calobs.freq.freq),
+            gamma_rec=labcal.calobs.lna.s11_model,
             gamma_ant=labcal.antenna_s11,
             c_terms=labcal.calobs.cterms,
             w_terms=labcal.calobs.wterms,
             fg_model=fg_model,
             parameters=params,
-            field_freq=field_freq
+            **kwargs
         )
 
     def __call__(self, **kwargs) -> np.ndarray:
@@ -765,10 +779,15 @@ class DataCalibrationLikelihood:
         return np.array([data['data_variance'][src]*(field_tns**2 if src=='ant' else tns**2) for src in self.src_names]).flatten()
         
     @classmethod
-    def from_labcal(cls, labcal, q_ant, qvar_ant, fg_model=LinLog(n_terms=5), sim: bool=False, scale_model: Polynomial=None, cal_noise='data', field_freq: np.ndarray | None = None, **kwargs):
+    def from_labcal(cls, labcal, q_ant, qvar_ant, fg_model=LinLog(n_terms=5), sim: bool=False, scale_model: Polynomial=None, cal_noise='data', field_freq: np.ndarray = attr.NOTHING, **kwargs):
         nwfg_model = NoiseWavesPlusFG.from_labcal(labcal, fg_model=fg_model, field_freq=field_freq)
         
-        k0 = {src: rcf.get_K(gamma_ant=gamma_src, gamma_rec=nwfg_model.gamma_rec)[0] for src, gamma_src in nwfg_model.gamma_src.items()}
+        k0 = {
+            src: rcf.get_K(
+                gamma_ant=gamma_src, 
+                gamma_rec=nwfg_model.gamma_rec(nwfg_model._freq(src))
+            )[0] for src, gamma_src in nwfg_model.gamma_src.items()
+        }
 
         if not sim:
             q = {name: load.spectrum.averaged_Q for name, load in labcal.calobs._loads.items()}
