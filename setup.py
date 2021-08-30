@@ -56,6 +56,6 @@ setup(
     test_suite="tests",
     tests_require=test_requirements,
     url="https://github.com/steven-murray/edges_estimate",
-    version="0.1.0",
+    use_scm_version=True,
     zip_safe=False,
 )
