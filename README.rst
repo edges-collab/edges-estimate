@@ -20,20 +20,14 @@ Features
 --------
 
 * Uses yabf_ as its Bayesian framework
-* Both `emcee`-based and `polychord`-based fits possible
-* Range of foreground models available (eg. `LinLog`, `LogLog`, `PhysicalLin`)
+* Both ``emcee``-based and ``polychord``-based fits possible
+* Range of foreground models available (eg. ``LinLog``, ``LogLog``, ``PhysicalLin``)
 * Supports arbitrary hierarchical models, and parameter dependencies.
 
 Installation
 ------------
-You should just be able to do `pip install .` in the top-level directory, with all
+You should just be able to do ``pip install .`` in the top-level directory, with all
 necessary dependencies automatically installed.
 
-Credits
--------
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
-
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
 .. _yabf: https://github.com/steven-murray/yabf

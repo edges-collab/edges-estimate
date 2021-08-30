@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """The setup script."""
 
@@ -44,7 +43,11 @@ setup(
         "Programming Language :: Python :: 3.7",
     ],
     description="Constrain parameters with EDGES data and an Emulator",
-    entry_points={"console_scripts": ["edges_estimate=edges_estimate.cli:main",],},
+    entry_points={
+        "console_scripts": [
+            "edges_estimate=edges_estimate.cli:main",
+        ],
+    },
     install_requires=requirements,
     license="GNU General Public License v3",
     long_description=readme + "\n\n" + history,

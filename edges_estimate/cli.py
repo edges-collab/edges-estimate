@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """Console script for edges_estimate."""
 import click
 import sys

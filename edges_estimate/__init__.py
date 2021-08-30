@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """Top-level package for edges-estimate."""
 
 from .calibration import *
@@ -8,10 +6,10 @@ from .foregrounds import *
 from .likelihoods import *
 
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
 except ImportError:
-    from importlib_metadata import version, PackageNotFoundError
+    from importlib_metadata import PackageNotFoundError, version
 
 __author__ = """Steven Murray"""
 __email__ = "steven.g.murray@asu.edu"
-__version__ = version('edges_estimate')
+__version__ = version("edges_estimate")

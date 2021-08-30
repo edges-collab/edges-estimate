@@ -5,8 +5,9 @@ from edges_cal import CalibrationObservation
 from pathlib import Path
 from typing import Optional, Tuple, Union
 from yabf import load_likelihood_from_yaml
-from .eor_models import AbsorptionProfile
+
 from .calibration import CalibratorQ
+from .eor_models import AbsorptionProfile
 from .likelihoods import CalibrationChi2
 
 
@@ -15,8 +16,9 @@ def write_yaml_dict(dct, indent=0):
         yaml.dump(dct, default_flow_style=False).split("\n")
     )
 
+
 def write_with_indent(str, indent=0):
-  return ("\n"+"  "*indent).join(str.split("\n"))
+    return ("\n" + "  " * indent).join(str.split("\n"))
 
 
 def create_calibration_config_from_calobs(
@@ -24,8 +26,8 @@ def create_calibration_config_from_calobs(
     fname: Optional[str] = None,
     bounds: bool = True,
     direc: Optional[Union[str, Path]] = Path("."),
-    save_lk_independently: bool=True,
-    save_cmp_independently: bool=True
+    save_lk_independently: bool = True,
+    save_cmp_independently: bool = True,
 ) -> Tuple[Path, CalibrationChi2]:
     direc = Path(direc)
 
@@ -81,8 +83,8 @@ calobs_args:
 """
     if save_cmp_independently:
         with open(path.with_suffix(".component.yml"), "w") as fl:
-          fl.write(cmp_config)
-          print(f'Wrote {path.with_suffix(".component.yml")}')
+            fl.write(cmp_config)
+            print(f'Wrote {path.with_suffix(".component.yml")}')
 
     lk_config = f"""
 name: calibration
@@ -96,8 +98,8 @@ components:
 
     if save_lk_independently:
         with open(path.with_suffix(".likelihood.yml"), "w") as fl:
-          fl.write(lk_config)
-          print(f'Wrote {path.with_suffix(".likelihood.yml")}')
+            fl.write(lk_config)
+            print(f'Wrote {path.with_suffix(".likelihood.yml")}')
 
     config = f"""
 name: {fname}
@@ -117,23 +119,18 @@ likelihoods:
     )
 
 
-def make_absorption(freq, fiducial = None, fix=tuple()):
+def make_absorption(freq, fiducial=None, fix=()):
     fiducial = fiducial or {}
-    params={
-        'A': {'max':2, 'min': 0.05, 'fiducial': fiducial.get('A', 0.5)}, 
-        'nu0': {'min': 60, 'max': 90, 'fiducial': fiducial.get('nu0', 78.5)}, 
-        'tau': {'min': 1, 'max': 20, 'fiducial': fiducial.get('tau', 7)}, 
-        'w': {'min':1, 'max': 25, 'fiducial': fiducial.get('w', 18)}
+    params = {
+        "A": {"max": 2, "min": 0.05, "fiducial": fiducial.get("A", 0.5)},
+        "nu0": {"min": 60, "max": 90, "fiducial": fiducial.get("nu0", 78.5)},
+        "tau": {"min": 1, "max": 20, "fiducial": fiducial.get("tau", 7)},
+        "w": {"min": 1, "max": 25, "fiducial": fiducial.get("w", 18)},
     }
 
-    fid = {p: params.pop(p)['fiducial'] for p in fix}
+    fid = {p: params.pop(p)["fiducial"] for p in fix}
 
-    return AbsorptionProfile(
-        name='absorption',
-        fiducial=fid,
-        params=params,
-        freqs=freq
-    )
+    return AbsorptionProfile(name="absorption", fiducial=fid, params=params, freqs=freq)
 
 
 def create_linear_fg_config(
@@ -142,31 +139,31 @@ def create_linear_fg_config(
     fname: Optional[str] = None,
     bounds: bool = True,
     direc: Optional[Union[str, Path]] = Path("."),
-    f_min: float=50.0,
-    f_max: float=100.0,   
-    fix = None,
+    f_min: float = 50.0,
+    f_max: float = 100.0,
+    fix=None,
 ) -> Tuple[Path, CalibrationChi2]:
     direc = Path(direc)
 
     if fix:
-        fixstr = "_fix-" + '-'.join(fix)
+        fixstr = "_fix-" + "-".join(fix)
     else:
         fix = []
-        fixstr = ''
+        fixstr = ""
     fname = (
         fname
         or f"linear_fg_{int(f_min)}-{int(f_max)}MHz{'_bounds' if bounds else '_no_bounds'}{fixstr}"
     )
 
     mask = ~np.isnan(data) & (freq >= f_min) & (freq <= f_max)
-    dfname = direc/fname 
+    dfname = direc / fname
 
     # Write out necessary data files
     np.savez(
-        (direc / fname).with_suffix(".data.npz"),
+        dfname.with_suffix(".data.npz"),
         spectrum=data[mask],
     )
-    np.save((direc / fname).with_suffix(".freq.npy"), freq[mask])
+    np.save(dfname.with_suffix(".freq.npy"), freq[mask])
 
     eor = make_absorption(freq[mask], fix=fix)
 
@@ -212,4 +209,3 @@ likelihoods:
         path.with_suffix(".yml"),
         load_likelihood_from_yaml(path.with_suffix(".yml")),
     )
-

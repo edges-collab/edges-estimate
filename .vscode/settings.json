@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/home/steven/miniconda3/envs/edges/bin/python"
+    "python.pythonPath": "/home/steven/miniconda3/envs/edges/bin/python",
+    "restructuredtext.confPath": "${workspaceFolder}/docs"
 }

@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 import attr
 import numpy as np
 from yabf import Component, Parameter
 
 
 def phenom_model(freqs, A, tau, w, nu0):
-    """ really bad inverse gaussian thing."""
+    """really bad inverse gaussian thing."""
     B = (
         4
         * (freqs - nu0) ** 2

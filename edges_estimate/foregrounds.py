@@ -98,7 +98,7 @@ class PhysicalLin(Foreground):
     """
 
     base_parameters = [Parameter("p0", fiducial=1750, latex=r"p_0")] + [
-        Parameter(f"p{i}", fiducial=0, latex=r"p_{}".format(i)) for i in range(1, 5)
+        Parameter(f"p{i}", fiducial=0, latex=fr"p_{i}") for i in range(1, 5)
     ]
 
     def model(self, **p):
@@ -135,8 +135,8 @@ class PhysicalLin(Foreground):
 @attr.s
 class IonContrib(Foreground):
     """
-      Absorption and emission due to the ionosphere
-      """
+    Absorption and emission due to the ionosphere
+    """
 
     base_parameters = [Parameter("absorption", fiducial=0, latex=r"\tau")] + [
         Parameter("emissivity", fiducial=0, latex=r"T_{elec}")
@@ -188,7 +188,7 @@ class LinLog(Foreground):
 
         # First create the parameters.
         for i in range(2, self.poly_order):
-            p.append(Parameter(f"p{i}", 0, latex=r"p_{}".format(i)))
+            p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
         return tuple(p)
 
     @cached_property
@@ -277,7 +277,7 @@ class Bias(Component):
 
         # First create the parameters.
         for i in range(1, self.poly_order):
-            p.append(Parameter(f"b{i}", 0, latex=r"b_{}".format(i)))
+            p.append(Parameter(f"b{i}", 0, latex=fr"b_{i}"))
         return tuple(p)
 
     def evaluate_poly(self, **params):

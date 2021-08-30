@@ -27,8 +27,7 @@ def _log_level_converter(val):
 
 @attr.s(frozen=True, cache_hash=True)
 class _CalibrationQ(Component):
-    """Base Component providing calibration Q_P.
-    """
+    """Base Component providing calibration Q_P."""
 
     path = attr.ib(kw_only=True, default="", validator=vld.instance_of(str))
     calobs_args = attr.ib(
@@ -97,7 +96,7 @@ class _CalibrationQ(Component):
 
     @cached_property
     def provides(self):
-        return [f"{self.name}_calibration_q", "data_mask", "cal_curves", 'freq_obj']
+        return [f"{self.name}_calibration_q", "data_mask", "cal_curves", "freq_obj"]
 
     def get_calibration_curves(self, params):
         # Put coefficients in backwards, because that's how the polynomial works.
@@ -184,7 +183,7 @@ class CalibratorQ(_CalibrationQ):
             Qp,
             self.data_mask,
             {"c1": scale, "c2": offset, "tu": tu, "tc": tc, "ts": ts},
-            self.calobs.freq
+            self.calobs.freq,
         )
 
 
@@ -204,9 +203,7 @@ class AntennaQ(_CalibrationQ):
         The S11 of the reciever/LNA.
     """
 
-    antenna = attr.ib(
-        kw_only=True, validator=attr.validators.instance_of(LoadS11)
-    )
+    antenna = attr.ib(kw_only=True, validator=attr.validators.instance_of(LoadS11))
     receiver = attr.ib(kw_only=True, validator=attr.validators.instance_of(LNA))
 
     @cached_property
