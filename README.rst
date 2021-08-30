@@ -4,10 +4,12 @@ edges-estimate
 
 .. image:: https://img.shields.io/travis/steven-murray/edges_estimate.svg
         :target: https://travis-ci.org/steven-murray/edges_estimate
-
 .. image:: https://readthedocs.org/projects/edges-estimate/badge/?version=latest
         :target: https://edges-estimate.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
+.. image:: https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white
+   :target: https://github.com/pre-commit/pre-commit
+   :alt: pre-commit
 
 Constrain foreground and 21 cm feature parameters with EDGES data.
 
