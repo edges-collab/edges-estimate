@@ -633,7 +633,7 @@ class NoiseWavesPlusFG:
             tuple(
                 rcf.get_K(
                     gamma_rec=self.gamma_rec(self._freq(name)),
-                    gamma_ant=self.gamma_src[name],
+                    gamma_ant=self.gamma_src[name](self._freq(name)),
                 )
                 for name in self.src_names
             )
@@ -755,9 +755,11 @@ class NoiseWavesPlusFG:
 
         return cls(
             freq=labcal.calobs.freq.freq,
-            gamma_src=labcal.calobs.s11_correction_models,
+            gamma_src={
+                name: load.s11_model for name, load in labcal.calobs._loads.items()
+            },
             gamma_rec=labcal.calobs.lna.s11_model,
-            gamma_ant=labcal.antenna_s11,
+            gamma_ant=labcal.antenna_s11_model,
             c_terms=labcal.calobs.cterms,
             w_terms=labcal.calobs.wterms,
             fg_model=fg_model,
@@ -821,26 +823,28 @@ class DataCalibrationLikelihood:
         tns = ctx["tns"]
         Tant = ctx["eor_spectrum"]
 
-        out = np.zeros((len(self.src_names), len(tns)))
+        out = []
         for i, src in enumerate(self.src_names):
             if src == "ant":
-                out[i] = ctx["tns_field"] * data["q"]["ant"] - data["k0"]["ant"] * Tant
+                out.append(
+                    ctx["tns_field"] * data["q"]["ant"] - data["k0"]["ant"] * Tant
+                )
             else:
                 Tsrc = data["T"][src]
-                out[i] = tns * data["q"][src] - data["k0"][src] * Tsrc
+                out.append(tns * data["q"][src] - data["k0"][src] * Tsrc)
 
-        return out.flatten()
+        return np.concatenate(out)
 
     def transform_variance(self, ctx: dict, data: dict):
         tns = ctx["tns"]
         field_tns = ctx["tns_field"]
-        return np.array(
+        return np.concatenate(
             [
                 data["data_variance"][src]
                 * (field_tns ** 2 if src == "ant" else tns ** 2)
                 for src in self.src_names
             ]
-        ).flatten()
+        )
 
     @classmethod
     def from_labcal(
@@ -861,7 +865,7 @@ class DataCalibrationLikelihood:
 
         k0 = {
             src: rcf.get_K(
-                gamma_ant=gamma_src,
+                gamma_ant=gamma_src(nwfg_model._freq(src)),
                 gamma_rec=nwfg_model.gamma_rec(nwfg_model._freq(src)),
             )[0]
             for src, gamma_src in nwfg_model.gamma_src.items()
@@ -929,6 +933,32 @@ class DataCalibrationLikelihood:
             )
 
         return cls(nwfg_model=nwfg_model, data=data, **kwargs)
+
+    def calibrate_at_params(self, params=None) -> np.ndarray:
+        """Get calibrated temperature of the data at a certain set of parameters.
+
+        This takes the input parameters (for TNS and T21), computes the best-fit
+        for the linear parameters, and applies the resulting calibration to the
+        input field data.
+        """
+        ctx = self.partial_linear_model.get_ctx(params=params)
+        fit = self.partial_linear_model.reduce_model(params=params)[0]
+
+        freq = self.nwfg_model.field_freq
+        model = fit.fit.model
+
+        a, b = rcf.get_linear_coefficients(
+            gamma_ant=self.nwfg_model.gamma_src["ant"](freq),
+            gamma_rec=self.nwfg_model.gamma_rec(freq),
+            sca=ctx["tns_field"] / 400.0,
+            off=300 - model.get_model("tload", x=freq),
+            t_unc=model.get_model("tunc", x=freq),
+            t_cos=model.get_model("tcos", x=freq),
+            t_sin=model.get_model("tsin", x=freq),
+            t_load=300,
+        )
+
+        return (self.data["q"]["ant"] * 400 + 300) * a + b
 
 
 @attr.s(frozen=True)
