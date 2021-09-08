@@ -741,7 +741,7 @@ class NoiseWavesPlusFG:
         """Initialize a noise wave model from a calibration observation."""
         if fg_model.parameters is not None:
             c2 = (-labcal.calobs.C2_poly.coefficients[::-1]).tolist()
-            c2[0] += labcal.calobs.open.spectrum.t_load
+            c2[0] += labcal.calobs.t_load
 
             params = (
                 labcal.calobs.Tunc_poly.coefficients[::-1].tolist()
@@ -753,12 +753,15 @@ class NoiseWavesPlusFG:
         else:
             params = None
 
+        gamma_src = {
+            name: load.reflections.s11_model
+            for name, load in labcal.calobs._loads.items()
+        }
+
         return cls(
             freq=labcal.calobs.freq.freq,
-            gamma_src={
-                name: load.s11_model for name, load in labcal.calobs._loads.items()
-            },
-            gamma_rec=labcal.calobs.lna.s11_model,
+            gamma_src=gamma_src,
+            gamma_rec=labcal.lna_s11,
             gamma_ant=labcal.antenna_s11_model,
             c_terms=labcal.calobs.cterms,
             w_terms=labcal.calobs.wterms,
@@ -881,7 +884,7 @@ class DataCalibrationLikelihood:
                 name: simulate_q_from_calobs(
                     labcal.calobs, name, scale_model=scale_model
                 )
-                for name in labcal.calobs._loads
+                for name in labcal.calobs.load_names
             }
 
         q["ant"] = q_ant
@@ -890,7 +893,6 @@ class DataCalibrationLikelihood:
             name: load.temp_ave * np.ones(labcal.calobs.freq.n)
             for name, load in labcal.calobs._loads.items()
         }
-
         qvar = {"ant": qvar_ant}
 
         if cal_noise == "data" or isinstance(cal_noise, dict):
