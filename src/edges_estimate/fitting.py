@@ -27,7 +27,7 @@ class SemiLinearFit:
         resid = self.spectrum - eor
         return self.fg.fit(
             ydata=resid,
-            weights=1 / self.sigma ** 2 if hasattr(self.sigma, "__len__") else None,
+            weights=1 / self.sigma ** 2 if hasattr(self.sigma, "__len__") else 1.0,
         )
 
     def fg_params(self, p):

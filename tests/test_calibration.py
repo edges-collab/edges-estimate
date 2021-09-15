@@ -29,7 +29,7 @@ def get_tns_model(calobs, ideal=True):
     return t_ns_model, t_ns_params
 
 
-def sim_antenna_q(labcal, fg, eor, ideal_tns=True):
+def sim_antenna_q(labcal, fg, eor, ideal_tns=True, loss=1):
     calobs = labcal.calobs
 
     spec = fg(x=eor.freqs) + eor()["eor_spectrum"]
@@ -38,16 +38,28 @@ def sim_antenna_q(labcal, fg, eor, ideal_tns=True):
     scale_model = tns_model.with_params(tns_model.parameters / calobs.t_load_ns)
 
     return simulate_qant_from_calobs(
-        calobs, ant_s11=labcal.antenna_s11, ant_temp=spec, scale_model=scale_model
+        calobs,
+        ant_s11=labcal.antenna_s11,
+        ant_temp=spec,
+        scale_model=scale_model,
+        loss=loss,
     )
 
 
 def get_likelihood(
-    labcal, qvar_ant, fg, eor, cal_noise, simulate=True, ideal_tns=True, smooth=1
+    labcal,
+    qvar_ant,
+    fg,
+    eor,
+    cal_noise,
+    simulate=True,
+    ideal_tns=True,
+    smooth=1,
+    loss=1,
 ):
     calobs = labcal.calobs
     fid_eor = get_eor(calobs)
-    q = sim_antenna_q(labcal, fg, fid_eor, ideal_tns=ideal_tns)
+    q = sim_antenna_q(labcal, fg, fid_eor, ideal_tns=ideal_tns, loss=loss)
 
     if isinstance(qvar_ant, (int, float)):
         qvar_ant = qvar_ant * np.ones_like(labcal.calobs.freq.freq)
@@ -75,6 +87,7 @@ def get_likelihood(
         t_ns_params=tns_params,
         cal_noise=cal_noise,
         field_freq=calobs.freq.freq[::smooth],
+        loss=loss,
     )
 
 
@@ -110,11 +123,42 @@ def get_eor(calobs, smooth=1):
     )
 
 
+# Define a loss function gotten from fitting to Alan's loss model (not necessary that
+# its accurate, just realistic to make the test useful)
+data_like_loss = Polynomial(
+    parameters=[
+        9.94044564e-01,
+        9.56335050e-04,
+        3.17454973e-03,
+        -4.66755684e-03,
+        -9.64025113e-04,
+        2.20677702e-03,
+        -8.51505391e-04,
+        2.33135350e-04,
+    ],
+    n_terms=8,
+    transform=UnitTransform(),
+)
+
+
+def unity_loss(x):
+    return 1
+
+
 @pytest.mark.parametrize(
-    "lc,qvar_ant,cal_noise,simulate,ideal_tns,atol,smooth",
+    "lc,qvar_ant,cal_noise,simulate,ideal_tns,atol,smooth,loss",
     [
-        ("labcal", 0.0, 0.0, True, True, 0.01, 1),  # No noise
-        ("labcal", 1e-10, 1e-10, True, True, 0.01, 1),  # Small constant noise
+        ("labcal", 0.0, 0.0, True, True, 0.01, 1, unity_loss),  # No noise
+        (
+            "labcal",
+            1e-10,
+            1e-10,
+            True,
+            True,
+            0.01,
+            1,
+            unity_loss,
+        ),  # Small constant noise
         (
             "labcal",
             1e-10,
@@ -123,8 +167,18 @@ def get_eor(calobs, smooth=1):
             True,
             0.01,
             1,
+            unity_loss,
         ),  # Realistic non-constant noise on smooth cal solutions
-        ("labcal12", 1e-10, "data", False, False, 0.05, 1),  # Actual cal data
+        (
+            "labcal12",
+            1e-10,
+            "data",
+            False,
+            False,
+            0.05,
+            1,
+            unity_loss,
+        ),  # Actual cal data
         (
             "labcal12",
             1e-10,
@@ -133,11 +187,31 @@ def get_eor(calobs, smooth=1):
             False,
             0.05,
             10,
+            unity_loss,
         ),  # Actual cal data, with fewer data freqs
+        (
+            "labcal",
+            1e-10,
+            "data",
+            True,
+            True,
+            0.05,
+            1,
+            data_like_loss,
+        ),  # Realistic non-constant noise on smooth cal solutions WITH LOSS
     ],
 )
 def test_cal_data_likelihood(
-    lc, fiducial_fg, qvar_ant, cal_noise, simulate, ideal_tns, atol, smooth, request
+    lc,
+    fiducial_fg,
+    qvar_ant,
+    cal_noise,
+    simulate,
+    ideal_tns,
+    atol,
+    smooth,
+    loss,
+    request,
 ):
     labcal = request.getfixturevalue(lc)
     eor = get_eor(labcal.calobs, smooth=smooth)
@@ -150,6 +224,7 @@ def test_cal_data_likelihood(
         simulate=simulate,
         ideal_tns=ideal_tns,
         smooth=smooth,
+        loss=loss(labcal.calobs.freq.freq),
     )
 
     res = run_map(lk.partial_linear_model)

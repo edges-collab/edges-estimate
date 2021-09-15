@@ -605,6 +605,7 @@ class NoiseWavesPlusFG:
     w_terms: int = attr.ib(default=6)
     fg_model: Model = attr.ib(default=LinLog(n_terms=5))
     parameters: Sequence[float] | None = attr.ib(default=None)
+    loss: float | np.ndarray = attr.ib(default=1.0)
 
     @field_freq.default
     def _ff_default(self) -> np.ndarray:
@@ -645,6 +646,7 @@ class NoiseWavesPlusFG:
 
         # K[0] multiples the fg, but not the other models.
         K[0][: len(self.freq) * (len(self.gamma_src) - 1)] = 0.0
+        K[0][-len(self.field_freq) :] *= self.loss
 
         return CompositeModel(
             models={
@@ -830,7 +832,9 @@ class DataCalibrationLikelihood:
         for i, src in enumerate(self.src_names):
             if src == "ant":
                 out.append(
-                    ctx["tns_field"] * data["q"]["ant"] - data["k0"]["ant"] * Tant
+                    ctx["tns_field"] * data["q"]["ant"]
+                    - data["k0"]["ant"] * Tant * data["loss"]
+                    + (1 - data["loss"]) * data["tamb"]
                 )
             else:
                 Tsrc = data["T"][src]
@@ -855,15 +859,17 @@ class DataCalibrationLikelihood:
         labcal,
         q_ant,
         qvar_ant,
+        loss: float | np.ndarray = 1.0,
         fg_model=LinLog(n_terms=5),
         sim: bool = False,
         scale_model: Polynomial = None,
         cal_noise="data",
         field_freq: np.ndarray = attr.NOTHING,
+        tamb: float = 296.0,
         **kwargs,
     ):
         nwfg_model = NoiseWavesPlusFG.from_labcal(
-            labcal, fg_model=fg_model, field_freq=field_freq
+            labcal, fg_model=fg_model, field_freq=field_freq, loss=loss
         )
 
         k0 = {
@@ -927,7 +933,14 @@ class DataCalibrationLikelihood:
                     for name, val in q.items()
                 }
 
-        data = {"q": q, "T": T, "k0": k0, "data_variance": qvar}
+        data = {
+            "q": q,
+            "T": T,
+            "k0": k0,
+            "data_variance": qvar,
+            "loss": loss,
+            "tamb": tamb,
+        }
 
         if not len(nwfg_model.field_freq) == len(q["ant"]) == len(qvar["ant"]):
             raise ValueError(
@@ -936,31 +949,81 @@ class DataCalibrationLikelihood:
 
         return cls(nwfg_model=nwfg_model, data=data, **kwargs)
 
-    def calibrate_at_params(self, params=None) -> np.ndarray:
+    def recalibrated_sky_temp(self, params=None) -> np.ndarray:
         """Get calibrated temperature of the data at a certain set of parameters.
 
         This takes the input parameters (for TNS and T21), computes the best-fit
         for the linear parameters, and applies the resulting calibration to the
         input field data.
+
+        i.e. it gets (Tns*Q - K*Tnw)/K0
         """
         ctx = self.partial_linear_model.get_ctx(params=params)
-        fit = self.partial_linear_model.reduce_model(params=params)[0]
+        fit, data, var = self.partial_linear_model.reduce_model(params=params)
+        freq = self.nwfg_model._freq("ant")
+        return (
+            ctx["tns_field"] * self.data["q"]["ant"] - fit.evaluate(freq)
+        ) / self.data["k0"]
 
-        freq = self.nwfg_model.field_freq
-        model = fit.fit.model
+    def plot_models(self, params=None, calobs=None, fig=None, ax=None):
+        fit, data, var = self.partial_linear_model.reduce_model(params=params)
 
-        a, b = rcf.get_linear_coefficients(
-            gamma_ant=self.nwfg_model.gamma_src["ant"](freq),
-            gamma_rec=self.nwfg_model.gamma_rec(freq),
-            sca=ctx["tns_field"] / 400.0,
-            off=300 - model.get_model("tload", x=freq),
-            t_unc=model.get_model("tunc", x=freq),
-            t_cos=model.get_model("tcos", x=freq),
-            t_sin=model.get_model("tsin", x=freq),
-            t_load=300,
-        )
+        if fig is None:
+            fig, ax = plt.subplots(
+                5,
+                2,
+                sharex=True,
+                gridspec_kw={"wspace": 0.05, "hspace": 0.05},
+                figsize=(5, 10),
+            )
 
-        return (self.data["q"]["ant"] * 400 + 300) * a + b
+        n = 0
+        mdata = fit.evaluate()
+        for i, src in enumerate(self.src_names):
+            freq = self.nwfg_model._freq(src)
+            ax[i, 0].plot(freq, data[n : n + len(freq)], label="Recalibrated Data")
+            ax[i, 0].plot(
+                freq, mdata[n : n + len(freq)], label="best-Fit Linear Model", ls="--"
+            )
+            ax[i, 0].set_ylabel(src)
+            ax[i, 1].plot(
+                freq,
+                (data[n : n + len(freq)] - mdata[n : n + len(freq)])
+                / np.sqrt(var[n : n + len(freq)]),
+                label="Recal Resid",
+            )
+
+            if calobs is not None and src != "ant":
+                fid_data = (
+                    calobs.C1() * calobs.t_load_ns * self.data["q"][src]
+                    - self.data["k0"][src] * self.data["T"][src]
+                )
+                ax[i, 0].plot(calobs.freq.freq, fid_data, label="Fiducial Cal Data")
+                fid_model_q = (
+                    calobs.decalibrate(temp=self.data["T"][src], load=src)
+                    - calobs.t_load
+                ) / calobs.t_load_ns
+                fid_model = (
+                    calobs.C1() * calobs.t_load_ns * fid_model_q
+                    - self.data["k0"][src] * self.data["T"][src]
+                )
+                fid_var = (calobs.C1() * calobs.t_load_ns) ** 2 * self.data[
+                    "data_variance"
+                ][src]
+
+                ax[i, 0].plot(calobs.freq.freq, fid_model, label="Fiducial Cal Model")
+
+                ax[i, 1].plot(
+                    calobs.freq.freq,
+                    (fid_data - fid_model) / np.sqrt(fid_var),
+                    label="Fid Resid",
+                )
+
+            n += len(freq)
+
+        ax[0, 0].legend()
+        ax[0, 1].legend()
+        return fig, ax
 
 
 @attr.s(frozen=True)
