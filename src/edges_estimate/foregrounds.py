@@ -171,7 +171,7 @@ class LinLog(Foreground):
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
 
-        if not self.use_p1 and "p1" in self.child_active_param_dct:
+        if not self.use_p1 and "p1" in self.child_active_params:
             raise ValueError(
                 "You are attempting to fit p1, but it won't affect anything!"
             )
