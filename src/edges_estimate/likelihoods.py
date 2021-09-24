@@ -10,7 +10,6 @@ from edges_cal.modelling import (
     Model,
     NoiseWaves,
     Polynomial,
-    ScaleTransform,
     UnitTransform,
 )
 from edges_cal.simulate import simulate_q_from_calobs
@@ -18,7 +17,7 @@ from getdist import loadMCSamples
 from matplotlib import pyplot as plt
 from pathlib import Path
 from scipy import stats
-from typing import Callable, Dict, List, Literal, Sequence
+from typing import Callable, Dict, List, Literal, Sequence, Tuple
 from yabf import Component, Likelihood, Parameter, ParameterVector, ParamVec
 from yabf.chi2 import Chi2, MultiComponentChi2
 
@@ -411,7 +410,7 @@ class PartialLinearModel(Chi2, Likelihood):
         try:
             logdetCinv = self.logdetCinv
         except AttributeError:
-            logdetCinv = np.log(np.linalg.det((basis / var).dot(basis.T)))
+            logdetCinv = np.log(np.linalg.det(fit.hessian))
 
         data[np.isinf(var)] = np.nan
 
@@ -459,6 +458,25 @@ class PartialLinearModel(Chi2, Likelihood):
 
         return result
 
+    def tunchat(self, model, ctx, **params):
+        return model[0].fit.model.tunc.parameters
+
+    def tcoshat(self, model, ctx, **params):
+        return model[0].fit.model.tcos.parameters
+
+    def tsinhat(self, model, ctx, **params):
+        return model[0].fit.model.tsin.parameters
+
+    def tloadhat(self, model, ctx, **params):
+        return model[0].fit.model.tload.parameters
+
+    def tfghat(self, model, ctx, **params):
+        return model[0].fit.model.fg.parameters
+
+    def linear(self, model, ctx, **params):
+        fit = model[0]
+        return fit.get_sample()
+
 
 @attr.s(frozen=True, kw_only=True)
 class TNS(Component):
@@ -486,7 +504,7 @@ class TNS(Component):
     def model(self):
         return Polynomial(
             n_terms=self.c_terms,
-            transform=UnitTransform(),
+            transform=UnitTransform(range=[self.x.min(), self.x.max()]),
             parameters=[p.fiducial for p in self.active_params],
         ).at(x=self.x)
 
@@ -494,7 +512,7 @@ class TNS(Component):
     def field_model(self):
         return Polynomial(
             n_terms=self.c_terms,
-            transform=UnitTransform(),
+            transform=UnitTransform(range=[self.x.min(), self.x.max()]),
             parameters=[p.fiducial for p in self.active_params],
         ).at(x=self.field_freq)
 
@@ -580,18 +598,62 @@ class NoiseWaveLikelihood:
 
         return cls(nw_model=nw_model, data=data, **kwargs)
 
-    def get_cal_curves(self, params: Sequence | None = None) -> dict[str, np.ndarray]:
-        ctx = self.partial_linear_model.get_ctx(params=params)
-        fit, data, var = self.partial_linear_model.reduce_model(ctx=ctx, params=params)
+    def get_cal_curves(
+        self, params: Sequence | None = None, freq=None, sample=True
+    ) -> dict[str, np.ndarray]:
+        fit = self.partial_linear_model.reduce_model(params=params)[0]
+
+        if freq is None:
+            freq = self.nw_model.freq
 
         model = fit.fit.model
+        if sample:
+            linear_params = fit.get_sample()[0]
+        else:
+            linear_params = fit.model_parameters
 
         out = {
-            name: model(x=self.nw_model.freq) for name, model in model.models.items()
+            name: model.get_model(name, x=freq, parameters=linear_params)
+            for name in model.models
         }
-        out["t_lns"] = ctx["tns"]
-
+        out["tns"] = self.t_ns_model.model.model(x=freq, parameters=params)
+        out["params"] = linear_params
         return out
+
+    def get_linear_coefficients(
+        self,
+        freq,
+        labcal,
+        params=None,
+        ctx=None,
+        fit=None,
+        linear_params=None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Get the linear coefficients that convert uncalibrated to calibrated temp.
+
+        The equation is T_cal = a*T_uncal + b
+        """
+        tns = self.t_ns_model.model.model(x=freq, parameters=params)
+
+        model = self.nw_model.linear_model.model
+        if linear_params is not None:
+            params = linear_params
+        else:
+            if fit is None:
+                fit = self.partial_linear_model.reduce_model(params=params)[0]
+            params = fit.model_parameters
+
+        return rcf.get_linear_coefficients(
+            gamma_ant=labcal.antenna_s11_model(freq),
+            gamma_rec=labcal.calobs.lna.s11_model(freq),
+            sca=tns / labcal.calobs.t_load_ns,
+            off=labcal.calobs.t_load
+            - model.get_model("tload", x=freq, parameters=params),
+            t_unc=model.get_model("tunc", x=freq, parameters=params),
+            t_cos=model.get_model("tcos", x=freq, parameters=params),
+            t_sin=model.get_model("tsin", x=freq, parameters=params),
+            t_load=labcal.calobs.t_load,
+        )
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -606,6 +668,7 @@ class NoiseWavesPlusFG:
     fg_model: Model = attr.ib(default=LinLog(n_terms=5))
     parameters: Sequence[float] | None = attr.ib(default=None)
     loss: float | np.ndarray = attr.ib(default=1.0)
+    bm_corr: float | np.ndarray = attr.ib(default=1.0)
 
     @field_freq.default
     def _ff_default(self) -> np.ndarray:
@@ -646,7 +709,7 @@ class NoiseWavesPlusFG:
 
         # K[0] multiples the fg, but not the other models.
         K[0][: len(self.freq) * (len(self.gamma_src) - 1)] = 0.0
-        K[0][-len(self.field_freq) :] *= self.loss
+        K[0][-len(self.field_freq) :] *= self.loss / self.bm_corr
 
         return CompositeModel(
             models={
@@ -655,21 +718,21 @@ class NoiseWavesPlusFG:
                     parameters=self.parameters[: self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(),
+                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
                 ),
                 "tcos": Polynomial(
                     n_terms=self.w_terms,
                     parameters=self.parameters[self.w_terms : 2 * self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(),
+                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
                 ),
                 "tsin": Polynomial(
                     n_terms=self.w_terms,
                     parameters=self.parameters[2 * self.w_terms : 3 * self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(),
+                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
                 ),
                 "tload": Polynomial(
                     n_terms=self.c_terms,
@@ -680,7 +743,7 @@ class NoiseWavesPlusFG:
                         if self.parameters is not None
                         else None
                     ),
-                    transform=UnitTransform(),
+                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
                 ),
                 "fg": self.fg_model,
             },
@@ -785,6 +848,9 @@ class DataCalibrationLikelihood:
     t_ns_params: ParamVec | None = attr.ib(None)
     verbose: bool = attr.ib(False)
     subtract_fiducial: bool = attr.ib(False)
+    save_linear_params: bool = attr.ib(True)
+    save_sampled_linear_params: bool = attr.ib(True)
+    derived: list[str | Callable] = attr.ib(factory=list)
 
     @eor_components.default
     def _eorcmp(self):
@@ -813,6 +879,14 @@ class DataCalibrationLikelihood:
 
     @cached_property
     def partial_linear_model(self):
+        derived = []
+        if self.save_linear_params:
+            derived.extend(["tunchat", "tcoshat", "tsinhat", "tloadhat", "tfghat"])
+        if self.save_sampled_linear_params:
+            derived.append("linear")
+
+        derived.extend(self.derived)
+
         return PartialLinearModel(
             linear_model=self.nwfg_model.linear_model,
             data=self.data,
@@ -822,6 +896,7 @@ class DataCalibrationLikelihood:
             version="keith",
             verbose=self.verbose,
             subtract_fiducial=self.subtract_fiducial,
+            derived=derived,
         )
 
     def transform_data(self, ctx: dict, data: dict):
@@ -833,8 +908,11 @@ class DataCalibrationLikelihood:
             if src == "ant":
                 out.append(
                     ctx["tns_field"] * data["q"]["ant"]
-                    - data["k0"]["ant"] * Tant * data["loss"]
-                    + (1 - data["loss"]) * data["tamb"]
+                    - data["k0"]["ant"]
+                    * (
+                        Tant * data["loss"] / data["bm_corr"]
+                        + (1 - data["loss"]) * data["tamb"]
+                    )
                 )
             else:
                 Tsrc = data["T"][src]
@@ -866,10 +944,11 @@ class DataCalibrationLikelihood:
         cal_noise="data",
         field_freq: np.ndarray = attr.NOTHING,
         tamb: float = 296.0,
+        bm_corr: float | np.ndarray = 1.0,
         **kwargs,
     ):
         nwfg_model = NoiseWavesPlusFG.from_labcal(
-            labcal, fg_model=fg_model, field_freq=field_freq, loss=loss
+            labcal, fg_model=fg_model, field_freq=field_freq, loss=loss, bm_corr=bm_corr
         )
 
         k0 = {
@@ -939,6 +1018,7 @@ class DataCalibrationLikelihood:
             "k0": k0,
             "data_variance": qvar,
             "loss": loss,
+            "bm_corr": bm_corr,
             "tamb": tamb,
         }
 
@@ -949,7 +1029,58 @@ class DataCalibrationLikelihood:
 
         return cls(nwfg_model=nwfg_model, data=data, **kwargs)
 
-    def recalibrated_sky_temp(self, params=None) -> np.ndarray:
+    def get_linear_coefficients(
+        self, params=None, ctx=None, fit=None, linear_params=None, src="ant"
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Get the linear coefficients that convert Q into a calibrated temperature.
+
+        The equation is T_cal = a*Q + b
+
+        This takes the input parameters (for TNS and T21), and computes the best-fit
+        for the linear parameters.
+        """
+        if ctx is None:
+            ctx = self.partial_linear_model.get_ctx(params=params)
+
+        if fit is None and linear_params is None:
+            fit = self.partial_linear_model.reduce_model(params=params)[0]
+            params = fit.model_parameters
+            model = fit.fit.model
+            x = fit.fit.x
+        elif fit is None:
+            model = self.nwfg_model.linear_model.model
+            x = self.nwfg_model.linear_model.x
+            params = linear_params
+        elif linear_params is None:
+            model = fit.fit.model
+            x = fit.fit.x
+            params = fit.model_parameters
+        else:
+            x = fit.fit.x
+            model = fit.fit.model
+            params = linear_params
+
+        idx = self.nwfg_model._get_idx(src)
+
+        if src == "ant":
+            a = ctx["tns_field"] / self.data["k0"]["ant"]
+        else:
+            a = ctx["tns"] / self.data["k0"][src]
+
+        b = (
+            -(
+                model.get_model("tunc", x=x, with_extra=True, parameters=params)
+                + model.get_model("tcos", x=x, with_extra=True, parameters=params)
+                + model.get_model("tsin", x=x, with_extra=True, parameters=params)
+                + model.get_model("tload", x=x, with_extra=True, parameters=params)
+            )[idx]
+            / self.data["k0"][src]
+        )
+        return a, b
+
+    def recalibrated_sky_temp(
+        self, params=None, ctx=None, fit=None, linear_params=None, a=None, b=None
+    ) -> np.ndarray:
         """Get calibrated temperature of the data at a certain set of parameters.
 
         This takes the input parameters (for TNS and T21), computes the best-fit
@@ -958,15 +1089,104 @@ class DataCalibrationLikelihood:
 
         i.e. it gets (Tns*Q - K*Tnw)/K0
         """
-        ctx = self.partial_linear_model.get_ctx(params=params)
+        if a is None or b is None:
+            a, b = self.get_linear_coefficients(
+                params=params, ctx=ctx, fit=fit, linear_params=linear_params, src="ant"
+            )
+
+        return (
+            (
+                a * self.data["q"]["ant"]
+                + b
+                - (1 - self.data["loss"]) * self.data["tamb"]
+            )
+            * self.data["bm_corr"]
+            / self.data["loss"]
+        )
+
+    def recalibrated_source_temp(self, src: str, params=None) -> np.ndarray:
+        a, b = self.get_linear_coefficients(params=params, src=src)
+        return a * self.data["q"][src] + b
+
+    def sky_temp_model(self, params=None) -> tuple[np.ndarray, np.ndarray]:
         fit, data, var = self.partial_linear_model.reduce_model(params=params)
         freq = self.nwfg_model._freq("ant")
-        return (
-            ctx["tns_field"] * self.data["q"]["ant"] - fit.evaluate(freq)
-        ) / self.data["k0"]
 
-    def plot_models(self, params=None, calobs=None, fig=None, ax=None):
+        fg = fit.fit.model.fg(x=freq)  # there's no K[0] or loss in this
+        ctx = self.partial_linear_model.get_ctx(params=params)
+
+        eor = ctx["eor_spectrum"]
+
+        return fg, eor
+
+    def cal_temp_model(self, src):
+        return self.data["T"][src]
+
+    def plot_calibrated_temps(
+        self, params=None, fig=None, ax=None, labcal=None, fid_resid=None
+    ):
+        if labcal is not None:
+            calobs = labcal.calobs
+
+        if fig is None:
+            fig, ax = plt.subplots(
+                5,
+                2,
+                sharex=True,
+                gridspec_kw={"wspace": 0.05, "hspace": 0.05},
+                figsize=(5, 10),
+            )
+
+        for i, src in enumerate(self.src_names):
+            if src == "ant":
+                recal_temp = self.recalibrated_sky_temp(params=params)
+                eor, fg = self.sky_temp_model(params=params)
+                recal_temp_model = eor + fg
+            else:
+                recal_temp = self.recalibrated_source_temp(src=src, params=params)
+                recal_temp_model = self.cal_temp_model(src)
+            freq = self.nwfg_model._freq(src)
+
+            ax[i, 0].plot(freq, recal_temp, label="Calibrated Data")
+            ax[i, 0].plot(freq, recal_temp_model, label="Model", ls="--")
+            ax[i, 0].set_ylabel(src)
+            ax[i, 1].plot(freq, recal_temp - recal_temp_model)
+
+            if labcal is not None and src != "ant":
+                fid_data = calobs.calibrate(src, q=self.data["q"][src])
+                ax[i, 0].plot(freq, fid_data, label="Fiducial Cal Data")
+                ax[i, 1].plot(
+                    freq,
+                    fid_data - recal_temp_model,
+                    label="Fid Resid",
+                )
+
+            elif labcal is not None and src == "ant":
+                fid_data = (
+                    (
+                        labcal.calibrate_q(self.data["q"]["ant"], freq=freq)
+                        - (1 - self.data["loss"]) * self.data["tamb"]
+                    )
+                    * self.data["bm_corr"]
+                    / self.data["loss"]
+                )
+                ax[i, 0].plot(freq, fid_data)
+                ax[i, 1].plot(freq, fid_data - recal_temp, label="Recal vs Labcal")
+                if fid_resid is not None:
+                    ax[i, 1].plot(freq, fid_resid)
+
+        ax[0, 0].legend()
+        ax[0, 1].legend()
+        ax[-1, 1].legend()
+        return fig, ax
+
+    def plot_models(
+        self, params=None, calobs=None, fig=None, ax=None, plot_zscore=True
+    ):
         fit, data, var = self.partial_linear_model.reduce_model(params=params)
+
+        if not plot_zscore:
+            var = np.ones_like(var)
 
         if fig is None:
             fig, ax = plt.subplots(
@@ -1007,9 +1227,12 @@ class DataCalibrationLikelihood:
                     calobs.C1() * calobs.t_load_ns * fid_model_q
                     - self.data["k0"][src] * self.data["T"][src]
                 )
-                fid_var = (calobs.C1() * calobs.t_load_ns) ** 2 * self.data[
-                    "data_variance"
-                ][src]
+                if plot_zscore:
+                    fid_var = (calobs.C1() * calobs.t_load_ns) ** 2 * self.data[
+                        "data_variance"
+                    ][src]
+                else:
+                    fid_var = 1
 
                 ax[i, 0].plot(calobs.freq.freq, fid_model, label="Fiducial Cal Model")
 
@@ -1026,130 +1249,35 @@ class DataCalibrationLikelihood:
         return fig, ax
 
 
-@attr.s(frozen=True)
-class RecalibratedSpectrum(Chi2, Likelihood):
-    """Likelihood that calibrates input Q before fitting a model to it.
+@attr.s(frozen=True, kw_only=True)
+class LinearFG:
+    """Classic traditional EoR fit to a calibrated sky spectrum.
 
-    Requires a component to provide `cal_curves`.
+    This defines a ``partial_linear_model`` that simply fits the EoR + FG, where the FG
+    is assumed to be a linear model. While this is not the ultimate in flexibility,
+    since the FG aren't always linear, it is fast.
     """
 
-    freq = attr.ib(None, kw_only=True)
-    K = attr.ib(None, kw_only=True)
-
-    def _reduce(self, ctx, **params):
-        return {
-            "spectrum": np.sum(
-                [val for key, val in ctx.items() if key.endswith("spectrum")],
-                axis=0,
-            ),
-            "cal_curves": ctx["cal_curves"],
-            "data_mask": ctx["data_mask"],
-            "recal_spec": self.recalibrate(
-                ctx["freq_obj"].normalize(self.freq),
-                self.data["uncal_spectrum"],
-                self.K,
-                ctx["cal_curves"]["c1"],
-                ctx["cal_curves"]["c2"],
-                ctx["cal_curves"]["tu"],
-                ctx["cal_curves"]["tc"],
-                ctx["cal_curves"]["ts"],
-            ),
-        }
-
-    def recalibrate(self, freq, uncal, K, scale, offset, tu, tc, ts):
-        a, b = rcf.get_linear_coefficients_from_K(
-            K,
-            scale(freq),
-            offset(freq),
-            tu(freq),
-            tc(freq),
-            ts(freq),
-            t_load=300,
-        )
-
-        return uncal * a + b
-
-    def lnl(self, model, **params):
-        # Ensure we don't use flagged channels
-        mask = ~np.isnan(model["recal_spec"])
-        d = model["recal_spec"][mask]
-        m = model["spectrum"][mask]
-
-        sigma = self.get_sigma(model)
-
-        if isinstance(sigma, (float, int)):
-            sigma = sigma * np.ones_like(d)
-
-        s = sigma[mask]
-        nm = stats.norm(loc=m, scale=s)
-
-        lnl = np.sum(nm.logpdf(d))
-        if np.isnan(lnl):
-            lnl = -np.inf
-        return lnl
-
-
-@attr.s(kw_only=True)
-class LinearFG(Likelihood):
-    """This is a basic likelihood that implements the AMLP method of Tauscher+2021: https://arxiv.org/2105.01672."""
-
     freq: np.ndarray = attr.ib()
-    sigma: float = attr.ib()
-    fg_terms: int = attr.ib(default=5)
-    fg_model: type[Model] | str = attr.ib(default="linlog")
+    t_sky: np.ndarray = attr.ib()
+    var: np.ndarray = attr.ib()
+    fg: Model = attr.ib()
+    eor: AbsorptionProfile = attr.ib()
+
+    @eor.default
+    def _eorcmp(self):
+        return (AbsorptionProfile(freqs=self.freq, params=("A", "w", "tau", "nu0")),)
 
     @cached_property
-    def data_mask(self):
-        return ~np.isnan(self.data["spectrum"])
-
-    @cached_property
-    def base_parameters(self):
-        return (Parameter("sigma", fiducial=0.05, latex=r"\sigma"),)
-
-    @cached_property
-    def foreground_model(self):
-        """The linear foreground model."""
-        return Model.get_mdl(self.fg_model)(default_x=self.freq, n_terms=self.fg_terms)
-
-    def _reduce(self, ctx, **params):
-        signal = np.sum(
-            [val for key, val in ctx.items() if key.endswith("spectrum")],
-            axis=0,
+    def partial_linear_model(self):
+        return PartialLinearModel(
+            linear_model=self.fg.at(x=self.freq),
+            data={"t_sky": self.t_sky, "data_variance": self.var},
+            components=(self.eor,),
+            data_func=self.transform_data,
+            variance_func=None,
+            version="keith",
         )
 
-        fit = self.foreground_model.fit(
-            ydata=self.data["spectrum"] - signal,
-            weights=np.where(self.data_mask, 1 / self.sigma, 0),
-        )
-
-        return {
-            "signal": signal,
-            "spectrum": signal + fit.evaluate(),
-            "residual": fit.residual,
-        }
-
-    @cached_property
-    def linear_hessian(self) -> np.ndarray:
-        """The Hessian of the linear calibration parameters."""
-        hessian = np.zeros((len(self.foreground_model.default_basis),) * 2)
-
-        for i, basis in enumerate(self.foreground_model.default_basis):
-            for j, basis2 in enumerate(
-                self.foreground_model.default_basis[i:], start=i
-            ):
-                hessian[i, j] = hessian[j, i] = np.sum(basis * basis2 / self.sigma ** 2)
-
-        return hessian
-
-    @cached_property
-    def linear_covariance(self) -> np.ndarray:
-        return np.linalg.inv(self.linear_hessian)
-
-    def lnl(self, model, **params):
-        nm = stats.norm(0, scale=self.sigma)
-        lnl = np.nansum(nm.logpdf(model["residual"]))
-
-        if np.isnan(lnl):
-            lnl = -np.inf
-
-        return lnl
+    def transform_data(self, ctx: dict, data: dict):
+        return data["t_sky"] - ctx["eor_spectrum"]
