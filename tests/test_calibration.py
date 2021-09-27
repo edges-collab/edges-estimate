@@ -76,12 +76,16 @@ def get_likelihood(
     ideal_tns=True,
     loss=1,
     bm_corr=1,
+    seed=1234,
 ):
     calobs = labcal.calobs
     q = sim_antenna_q(labcal, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr)
 
     if isinstance(qvar_ant, (int, float)):
         qvar_ant = qvar_ant * np.ones_like(eor.freqs)
+
+    if seed:
+        np.random.seed(seed)
 
     q = q + np.random.normal(scale=qvar_ant)
 
