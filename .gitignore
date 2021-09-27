@@ -133,3 +133,4 @@ integration_tests/PolyChordChains/
 docs/tutorials/lk_config.yml
 .vscode/
 devel/toy_models/
+!tests/data/*.h5
