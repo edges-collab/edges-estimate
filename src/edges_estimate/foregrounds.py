@@ -11,7 +11,7 @@ from yabf import Component, Parameter
 class Foreground(Component):
     """Base class for all foreground models, don't use this directly!"""
 
-    freqs = attr.ib(kw_only=True)
+    freqs: np.ndarray = attr.ib(kw_only=True, eq=attr.cmp_using(eq=np.array_equal))
     nuc = attr.ib(75.0, kw_only=True, converter=float)
 
     @cached_property
@@ -222,7 +222,7 @@ class Sinusoid(Foreground):
 
 @attr.s
 class DampedSinusoid(Component):
-    freqs = attr.ib(kw_only=True)
+    freqs: np.ndarray = attr.ib(kw_only=True, eq=attr.cmp_using(eq=np.array_equal))
     provides = ("sin_spectrum",)
 
     base_parameters = [
@@ -261,7 +261,7 @@ class LinPoly(LinLog):
 
 @attr.s
 class Bias(Component):
-    x = attr.ib(kw_only=True)
+    x: np.ndarray = attr.ib(kw_only=True, eq=attr.cmp_using(eq=np.array_equal))
     centre = attr.ib(1, converter=float, kw_only=True)
 
     poly_order = attr.ib(1, converter=int, kw_only=True)
