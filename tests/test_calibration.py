@@ -310,7 +310,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions with fewer sky freqs
         (
             "labcal",
-            1e-10,
+            1e-12,
             "data",
             True,
             True,
