@@ -14,6 +14,7 @@ from edges_cal.modelling import (
     UnitTransform,
 )
 from edges_cal.simulate import simulate_q_from_calobs
+from edges_cal.tools import bin
 from getdist import loadMCSamples
 from matplotlib import pyplot as plt
 from pathlib import Path
@@ -111,164 +112,6 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
                 + params["sigma_wn"] ** 2
             )
         )
-
-
-@attr.s(frozen=True)
-class CalibrationChi2(Likelihood):
-    """Data should be passed as a dict of {source: qp}."""
-
-    base_parameters = [Parameter("sigma_scale", 1, min=0, latex=r"f_\sigma")]
-
-    sigma = attr.ib(None, kw_only=True)
-    use_model_sigma = attr.ib(default=False, converter=bool, kw_only=True)
-
-    def _reduce(self, ctx, **params):
-        out = {}
-        for k in ctx:
-            if k.endswith("calibration_q"):
-                out["Qp"] = ctx[k]
-                break
-
-        for k in ctx:
-            if k.endswith("calibration_qsigma"):
-                out["curlyQ"] = ctx[k]
-                break
-
-        out["data_mask"] = ctx["data_mask"]
-
-        return out
-
-    def get_sigma(self, model, source=None, **params):
-        if self.sigma is not None:
-            if isinstance(self.sigma, dict):
-                return self.sigma[source][model["data_mask"]]
-            else:
-                return self.sigma
-        elif not self.use_model_sigma:
-            return params["sigma_scale"]
-        else:
-            return (
-                params["sigma_scale"]
-                * model["Qp"][source] ** 2
-                * (1 + model["curlyQ"][source])
-            )
-
-    def _mock(self, model, **params):
-        sigma = self.get_sigma(model, **params)
-        return model + np.random.normal(loc=0, scale=sigma, size=len(model))
-
-    def lnl(self, model, **params):
-        lnl = 0
-        for source, data in self.data.items():
-            sigma = self.get_sigma(model, source=source, **params)
-            lnl += -np.nansum(
-                np.log(sigma)
-                + (model["Qp"][source] - data[model["data_mask"]]) ** 2
-                / (2 * sigma**2)
-            )
-            if np.isnan(lnl):
-                lnl = -np.inf
-                break
-        return lnl
-
-    # ===== Potential Derived Quantities
-    def residual_open(self, model, ctx, **params):
-        return self.data["open"] - model["Qp"]["open"]
-
-    def residual_short(self, model, ctx, **params):
-        return self.data["short"] - model["Qp"]["short"]
-
-    def residual_hot_load(self, model, ctx, **params):
-        return self.data["hot_load"] - model["Qp"]["hot_load"]
-
-    def residual_ambient(self, model, ctx, **params):
-        return self.data["ambient"] - model["Qp"]["ambient"]
-
-    def rms_open(self, model, ctx, **params):
-        return np.sqrt(np.mean((model["Qp"]["open"] - self.data["open"]) ** 2))
-
-    def rms_short(self, model, ctx, **params):
-        return np.sqrt(np.mean((model["Qp"]["short"] - self.data["short"]) ** 2))
-
-    def rms_hot_load(self, model, ctx, **params):
-        return np.sqrt(np.mean((model["Qp"]["hot_load"] - self.data["hot_load"]) ** 2))
-
-    def rms_ambient(self, model, ctx, **params):
-        return np.sqrt(np.mean((model["Qp"]["ambient"] - self.data["ambient"]) ** 2))
-
-    def get_polys(self, samples, indices=None):
-        """Get the polynomial curves from an MCSamples posterior."""
-        names = list(self.child_active_param_dct.keys())
-
-        if isinstance(samples, (Path, str)):
-            samples = loadMCSamples(samples).samples
-
-        if indices is None:
-            indices = list(range(len(samples)))
-        if isinstance(indices, int):
-            indices = list(range(indices))
-
-        c1 = np.zeros((len(indices), len(self["calibrator"].freq)))
-        c2 = np.zeros((len(indices), len(self["calibrator"].freq)))
-        tunc = np.zeros((len(indices), len(self["calibrator"].freq)))
-        tcos = np.zeros((len(indices), len(self["calibrator"].freq)))
-        tsin = np.zeros((len(indices), len(self["calibrator"].freq)))
-
-        for ix in indices:
-            params = {name: v for name, v in zip(names, samples[ix])}
-            c1[ix], c2[ix], tunc[ix], tcos[ix], tsin[ix] = self[
-                "calibrator"
-            ].get_calibration_curves(params)
-
-        return c1, c2, tunc, tcos, tsin
-
-    def plot_mc_curves(self, samples, indices=None):
-        fig, ax = plt.subplots(
-            5, 1, sharex=True, gridspec_kw={"hspace": 0}, figsize=(10, 8)
-        )
-        freq = self["calibrator"].freq
-        calibrator = self["calibrator"]
-        names = list(calibrator.child_active_param_dct.keys())
-
-        ml_params = np.concatenate(
-            (
-                calibrator.calobs.C1_poly.coefficients[::-1],
-                calibrator.calobs.C2_poly.coefficients[::-1],
-                calibrator.calobs.Tunc_poly.coefficients[::-1],
-                calibrator.calobs.Tcos_poly.coefficients[::-1],
-                calibrator.calobs.Tsin_poly.coefficients[::-1],
-            )
-        )
-
-        c1, c2, tunc, tcos, tsin = self.get_polys(samples, indices=indices)
-
-        for i, (name, thing, ml_thing, fid) in enumerate(
-            zip(
-                (
-                    r"$C_1$",
-                    r"$C_2$",
-                    r"$T_{\rm unc}$",
-                    r"$T_{\rm cos}$",
-                    r"$T_{\rm sin}$",
-                ),
-                (c1, c2, tunc, tcos, tsin),
-                calibrator.get_calibration_curves(
-                    {name: val for name, val in zip(names, ml_params)}
-                ),
-                calibrator.get_calibration_curves(
-                    {apar.name: apar.fiducial for apar in self.child_active_params}
-                ),
-            )
-        ):
-            perc = np.percentile(thing, [16, 50, 84], axis=0)
-            ax[i].fill_between(freq, perc[0], perc[2], alpha=0.5)
-            ax[i].plot(freq, perc[1], label="Median MCMC")
-            ax[i].plot(freq, ml_thing, label="MAP")
-
-            ax[i].set_ylabel(name)
-
-        ax[-1].set_xlabel("Frequency [MHz]")
-        ax[0].legend()
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -406,7 +249,7 @@ class PartialLinearModel(Chi2, Likelihood):
         resid = fit.residual[~np.isinf(var)]
         var = var[~np.isinf(var)]
 
-        logdetSig = np.sum(var) if self.variance_func is not None else 0
+        logdetSig = np.sum(np.log(var)) if self.variance_func is not None else 0
 
         try:
             logdetCinv = self.logdetCinv
@@ -570,18 +413,22 @@ class NoiseWaveLikelihood:
         return data["data_variance"] * tns**2
 
     @classmethod
-    def from_calobs(cls, calobs, sig_by_sigq=True, **kwargs):
-        nw_model = NoiseWaves.from_calobs(calobs)
-        k0 = np.concatenate(tuple(calobs.get_K()[src][0] for src in calobs.loads))
+    def from_calobs(cls, calobs, smooth=1, sig_by_sigq=True, **kwargs):
+        nw_model = NoiseWaves.from_calobs(calobs, smooth=smooth)
+        ks = calobs.get_K(nw_model.freq)
+        k0 = np.concatenate(tuple(ks[src][0] for src in calobs._loads))
 
         data = {
             "q": np.concatenate(
-                tuple(load.spectrum.averaged_Q for load in calobs.loads.values())
+                tuple(
+                    bin(load.spectrum.averaged_Q, smooth)
+                    for load in calobs._loads.values()
+                )
             ),
             "T": np.concatenate(
                 tuple(
-                    load.temp_ave * np.ones_like(calobs.freq.freq)
-                    for load in calobs.loads.values()
+                    bin(load.temp_ave * np.ones_like(calobs.freq.freq), smooth)
+                    for load in calobs._loads.values()
                 )
             ),
             "k0": k0,
@@ -590,12 +437,61 @@ class NoiseWaveLikelihood:
         if sig_by_sigq:
             data["data_variance"] = np.concatenate(
                 tuple(
-                    load.spectrum.variance_Q / load.spectrum.n_integrations
-                    for load in calobs.loads.values()
+                    bin(load.spectrum.variance_Q / load.spectrum.n_integrations, smooth)
+                    / smooth
+                    for load in calobs._loads.values()
                 )
             )
         else:
             data["data_variance"] = 1.0
+
+        return cls(nw_model=nw_model, data=data, **kwargs)
+
+    @classmethod
+    def from_sim_calobs(cls, calobs, t_ns_params, smooth=1, variance="data", **kwargs):
+        nw_model = NoiseWaves.from_calobs(calobs, smooth=smooth)
+        ks = calobs.get_K(nw_model.freq)
+        k0 = np.concatenate(tuple(ks[src][0] for src in calobs._loads))
+        freq = nw_model.freq
+
+        c1_model = Polynomial(
+            parameters=[p.fiducial / calobs.t_load_ns for p in t_ns_params],
+            transform=UnitTransform(range=(calobs.freq.min, calobs.freq.max)),
+        )
+
+        data = {
+            "q": {
+                name: simulate_q_from_calobs(calobs, name, scale_model=c1_model)
+                for name in calobs.load_names
+            },
+            "T": np.concatenate(
+                tuple(
+                    bin(load.temp_ave * np.ones_like(calobs.freq.freq), smooth)
+                    for load in calobs._loads.values()
+                )
+            ),
+            "k0": k0,
+        }
+
+        # Now Get The Noise
+        if variance == "data":
+            qvar = {
+                name: load.spectrum.variance_Q / load.spectrum.n_integrations
+                for name, load in calobs._loads.items()
+            }
+        elif isinstance(variance, dict):
+            qvar = {name: variance[name] * np.ones_like(freq) for name in calobs._loads}
+        else:
+            qvar = {name: variance * np.ones_like(freq) for name in calobs._loads}
+
+        data["q"] = np.concatenate(
+            tuple(
+                val + np.random.normal(scale=np.sqrt(qvar[name]))
+                for name, val in data["q"].items()
+            )
+        )
+
+        data["data_variance"] = np.concatenate(tuple(qvar.values()))
 
         return cls(nw_model=nw_model, data=data, **kwargs)
 
