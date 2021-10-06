@@ -39,7 +39,7 @@ def get_models_from_mcsamples(
 
     out = {}
     if lk is None:
-        lk = load_likelihood_from_yaml(mcsamples.rootname + ".yml")
+        lk = load_likelihood_from_yaml(mcsamples.rootname + "_config.yml")
 
     top_level = True
     if isinstance(lk, LikelihoodContainer):
