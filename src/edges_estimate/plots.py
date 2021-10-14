@@ -24,7 +24,9 @@ def get_evidence(mcsamplesr):
     return evidence
 
 
-def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None, progress=True):
+def get_models_from_mcsamples(
+    mcsamples, lk_names, lk=None, extras=None, n=None, progress=True
+):
     if type(mcsamples) == str:
         mcsamples = loadMCSamples(mcsamples)
 
@@ -36,7 +38,8 @@ def get_models_from_mcsamples(mcsamples, lk_names, extras=None, n=None, progress
         samples = mcsamples.samples
 
     out = {}
-    lk = load_likelihood_from_yaml(mcsamples.rootname + ".yml")
+    if lk is None:
+        lk = load_likelihood_from_yaml(mcsamples.rootname + "_config.yml")
 
     top_level = True
     if isinstance(lk, LikelihoodContainer):

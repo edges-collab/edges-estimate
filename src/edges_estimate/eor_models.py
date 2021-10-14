@@ -25,7 +25,7 @@ class AbsorptionProfile(Component):
         Parameter("nu0", 75, min=0, latex=r"\nu_0"),
     ]
 
-    freqs = attr.ib(kw_only=True)
+    freqs: np.ndarray = attr.ib(kw_only=True, eq=attr.cmp_using(eq=np.array_equal))
 
     def calculate(self, ctx, **params):
         return phenom_model(self.freqs, **params)
