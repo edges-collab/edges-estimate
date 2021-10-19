@@ -5,6 +5,7 @@ import numpy as np
 from astropy import units as u
 from edges_cal.modelling import Polynomial, UnitTransform
 from edges_cal.simulate import simulate_qant_from_calobs
+from helpers import get_tns_model, sim_antenna_q
 from scipy import stats
 from yabf import ParamVec, run_map
 

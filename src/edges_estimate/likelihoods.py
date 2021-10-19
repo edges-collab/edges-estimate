@@ -72,7 +72,7 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
         Parameter("sigma_wn", 0.0, min=0, latex=r"\sigma_{\rm wn}"),
     ]
 
-    integration_time = attr.ib(converter=np.float, kw_only=True)  # in seconds!
+    integration_time = attr.ib(converter=float, kw_only=True)  # in seconds!
     weights = attr.ib(1, kw_only=True)
 
     @weights.validator
@@ -327,6 +327,30 @@ class TNS(Component):
     x: np.ndarray = attr.ib()
     c_terms: int = attr.ib(default=5)
     field_freq: np.ndarray | None = attr.ib(None)
+    freq_range: tuple[float, float] = attr.ib()
+    fiducial: np.typing.ArrayLike = attr.ib()
+
+    @freq_range.default
+    def _fr_default(self):
+        return (self.x.min(), self.x.max())
+
+    @freq_range.validator
+    def _fr_validator(self, att, val):
+        if len(val) != 2:
+            raise ValueError("freq_range must be a 2-tuple of floats!")
+        if val[1] <= val[0]:
+            raise ValueError(f"freq_range must in the form (min, max), got: {val}")
+
+    @fiducial.default
+    def _fid_default(self):
+        return [1500] + [0] * (self.c_terms - 1)
+
+    @fiducial.validator
+    def _fid_validator(self, att, val):
+        if len(val) != self.c_terms:
+            raise ValueError(
+                f"fiducial must be a sequence of length c_terms ({self.c_terms}), got {len(val)}."
+            )
 
     @cached_property
     def provides(self):
@@ -339,7 +363,7 @@ class TNS(Component):
     def base_parameters(self):
         return ParameterVector(
             "t_lns",
-            fiducial=[1500] + [0] * (self.c_terms - 1),
+            fiducial=self.fiducial,
             length=self.c_terms,
             latex=r"T^{\rm L+NS}_{%s}",
         ).get_params()
@@ -348,7 +372,7 @@ class TNS(Component):
     def model(self):
         return Polynomial(
             n_terms=self.c_terms,
-            transform=UnitTransform(range=[self.x.min(), self.x.max()]),
+            transform=UnitTransform(range=self.freq_range),
             parameters=[p.fiducial for p in self.active_params],
         ).at(x=self.x)
 
@@ -356,7 +380,7 @@ class TNS(Component):
     def field_model(self):
         return Polynomial(
             n_terms=self.c_terms,
-            transform=UnitTransform(range=[self.x.min(), self.x.max()]),
+            transform=UnitTransform(range=self.freq_range),
             parameters=[p.fiducial for p in self.active_params],
         ).at(x=self.field_freq)
 
@@ -378,10 +402,19 @@ class NoiseWaveLikelihood:
     sig_by_tns: bool = attr.ib(default=True)
     version: Literal["mine", "raul", "keith", "raul-full"] = attr.ib(default="keith")
     t_ns_params: ParamVec = attr.ib()
+    t_ns_freq_range: tuple[float, float] = attr.ib()
+
+    @t_ns_freq_range.default
+    def _tns_fr_default(self):
+        return (self.nw_model.freq.min(), self.nw_model.freq.max())
 
     @t_ns_params.default
     def _tns_default(self) -> ParamVec:
-        return ParamVec("t_lns", length=self.nw_model.c_terms)
+        return ParamVec(
+            "t_lns",
+            length=self.nw_model.c_terms,
+            fiducial=[1000] + [0] * (self.nw_model.c_terms - 1),
+        )
 
     @cached_property
     def t_ns_model(self):
@@ -389,6 +422,8 @@ class NoiseWaveLikelihood:
             x=self.nw_model.freq.to_value("MHz"),
             c_terms=self.nw_model.c_terms,
             params=self.t_ns_params.get_params(),
+            fiducial=list(self.t_ns_params.fiducial),
+            freq_range=self.t_ns_freq_range,
         )
 
     @cached_property
@@ -448,27 +483,40 @@ class NoiseWaveLikelihood:
         return cls(nw_model=nw_model, data=data, **kwargs)
 
     @classmethod
-    def from_sim_calobs(cls, calobs, t_ns_params, smooth=1, variance="data", **kwargs):
-        nw_model = NoiseWaves.from_calobs(calobs, smooth=smooth)
+    def from_sim_calobs(
+        cls, calobs, t_ns_width=10, smooth=1, variance="data", calobs_fit=None, **kwargs
+    ):
+        if calobs_fit is None:
+            calobs_fit = calobs
+
+        nw_model = NoiseWaves.from_calobs(calobs_fit, smooth=smooth)
         ks = calobs.get_K(nw_model.freq)
         k0 = np.concatenate(tuple(ks[src][0] for src in calobs._loads))
         freq = nw_model.freq
 
-        c1_model = Polynomial(
-            parameters=[p.fiducial / calobs.t_load_ns for p in t_ns_params],
-            transform=UnitTransform(range=(calobs.freq.min, calobs.freq.max)),
-        )
+        temp_ave = {}
+        for load in calobs._loads:
+            if smooth > 1 and load == "hot_load":
+                gain = calobs.hot_load._correction.power_gain(
+                    freq, calobs.hot_load.reflections
+                )
+                # temperature
+                temp_ave[load] = (
+                    gain * calobs.hot_load.spectrum.temp_ave
+                    + (1 - gain) * calobs.hot_load._ambient.temp_ave
+                )
+            else:
+                temp_ave[load] = calobs._loads[load].temp_ave
 
         data = {
             "q": {
-                name: simulate_q_from_calobs(calobs, name, scale_model=c1_model)
+                name: simulate_q_from_calobs(
+                    calobs, name, freq=freq if smooth > 1 else None
+                )
                 for name in calobs.load_names
             },
             "T": np.concatenate(
-                tuple(
-                    bin(load.temp_ave * np.ones_like(calobs.freq.freq), smooth)
-                    for load in calobs._loads.values()
-                )
+                tuple(t * np.ones_like(freq) for t in temp_ave.values())
             ),
             "k0": k0,
         }
@@ -476,7 +524,10 @@ class NoiseWaveLikelihood:
         # Now Get The Noise
         if variance == "data":
             qvar = {
-                name: load.spectrum.variance_Q / load.spectrum.n_integrations
+                name: bin(
+                    load.spectrum.variance_Q / load.spectrum.n_integrations, smooth
+                )
+                / smooth
                 for name, load in calobs._loads.items()
             }
         elif isinstance(variance, dict):
@@ -493,7 +544,24 @@ class NoiseWaveLikelihood:
 
         data["data_variance"] = np.concatenate(tuple(qvar.values()))
 
-        return cls(nw_model=nw_model, data=data, **kwargs)
+        est_tns = calobs_fit.C1_poly.coeffs[::-1] * calobs.t_load_ns
+
+        t_ns_params = ParamVec(
+            "t_lns",
+            length=calobs_fit.cterms,
+            min=est_tns - t_ns_width,
+            max=est_tns + t_ns_width,
+            fiducial=est_tns,
+            ref=[stats.norm(v, scale=1.0) for v in est_tns],
+        )
+
+        return cls(
+            nw_model=nw_model,
+            data=data,
+            t_ns_params=t_ns_params,
+            t_ns_freq_range=(calobs.freq.min, calobs.freq.max),
+            **kwargs,
+        )
 
     def get_cal_curves(
         self, params: Sequence | None = None, freq=None, sample=True
