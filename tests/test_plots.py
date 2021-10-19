@@ -1,9 +1,12 @@
 import pytest
 
 <<<<<<< HEAD
-from edges_estimate import plots as p
-import numpy as np
 import pytest
+
+import numpy as np
+
+from edges_estimate import plots as p
+
 
 @pytest.fixture(scope="session")
 def models():
@@ -13,7 +16,7 @@ def models():
 @pytest.fixture(scope="session")
 def freqs():
     return  {key:  np.random.normal(size=50) for key in ['one', 'two']}
-    
+
 @pytest.fixture(scope="session")
 def temp():
     return  {key: np.random.normal(size=50) for key in ['one', 'two']}
