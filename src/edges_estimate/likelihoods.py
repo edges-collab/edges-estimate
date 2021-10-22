@@ -483,15 +483,32 @@ class NoiseWaveLikelihood:
 
     @classmethod
     def from_sim_calobs(
-        cls, calobs, t_ns_width=10, smooth=1, variance="data", calobs_fit=None, **kwargs
+        cls,
+        calobs,
+        t_ns_width=10,
+        smooth=1,
+        variance="data",
+        cterms=None,
+        wterms=None,
+        seed=None,
+        **kwargs,
     ):
-        if calobs_fit is None:
-            calobs_fit = calobs
+        """Generate the likelihood by simulating directly from a calobs.
 
-        nw_model = NoiseWaves.from_calobs(calobs_fit, smooth=smooth)
+        Note that cterms and wterms here change the final likelihood model, but the
+        simulation itself is based on the input calobs (i.e. setting cterms and wterms
+        differently will mean that the model doesn't correctly describe the simulated
+        data).
+        """
+        nw_model = NoiseWaves.from_calobs(
+            calobs, smooth=smooth, cterms=cterms, wterms=wterms
+        )
         ks = calobs.get_K(nw_model.freq)
         k0 = np.concatenate(tuple(ks[src][0] for src in calobs._loads))
         freq = nw_model.freq
+
+        if seed:
+            np.random.seed(seed)
 
         temp_ave = {}
         for load in calobs._loads:
@@ -543,11 +560,15 @@ class NoiseWaveLikelihood:
 
         data["data_variance"] = np.concatenate(tuple(qvar.values()))
 
-        est_tns = calobs_fit.C1_poly.coeffs[::-1] * calobs.t_load_ns
+        est_tns = calobs.C1_poly.coeffs[::-1] * calobs.t_load_ns
+        if cterms and cterms > calobs.cterms:
+            est_tns = np.concatenate((est_tns, np.zeros(cterms - calobs.cterms)))
+        else:
+            est_tns = est_tns[:cterms]
 
         t_ns_params = ParamVec(
             "t_lns",
-            length=calobs_fit.cterms,
+            length=len(est_tns),
             min=est_tns - t_ns_width,
             max=est_tns + t_ns_width,
             fiducial=est_tns,
