@@ -14,7 +14,7 @@ from edges_cal.modelling import (
     UnitTransform,
 )
 from edges_cal.simulate import simulate_q_from_calobs
-from edges_cal.tools import bin
+from edges_cal.tools import bin_array
 from getdist import loadMCSamples
 from matplotlib import pyplot as plt
 from pathlib import Path
@@ -123,9 +123,6 @@ class PartialLinearModel(Chi2, Likelihood):
     ----------
     linear_model
         A linear model containing all the terms that are linear.
-    version
-        Choice of a version of the likelihood. The default, 'keith', corresponds to
-        the derivation given in the notes, which is faster than using the full matrices.
     variance_func
         A callable function that takes two arguments: ``ctx`` and ``data``, and returns
         an array of model variance. If not provided, the input data must have a key
@@ -174,7 +171,6 @@ class PartialLinearModel(Chi2, Likelihood):
     with the first term only.
     """
     linear_model: Model = attr.ib()
-    version: Literal["raul", "keith", "raul-full"] = attr.ib(default="keith")
     variance_func: Callable | None = attr.ib(default=None)
     data_func: Callable | None = attr.ib(default=None)
     basis_func: Callable | None = attr.ib(default=None)
@@ -235,8 +231,27 @@ class PartialLinearModel(Chi2, Likelihood):
     def fiducial_lnl(self):
         return attr.evolve(self, subtract_fiducial=False, verbose=False)()[0]
 
-    def lnl(self, model, **params):
-        # Ensure we don't use flagged channels
+    def logdet_cinv(self, model, ctx, **params) -> float:
+        """A derived quantity, the log-determinant of the inverse of C."""
+        fit = model[0]
+        try:
+            return self.logdetCinv
+        except AttributeError:
+            return np.log(np.linalg.det(fit.hessian))
+
+    def logdet_sig(self, model, ctx, **params):
+        """A derived quantity, the log-determinant of the covariance matrix."""
+        var = model[-1]
+        var = var[~np.isinf(var)]
+
+        if not hasattr(var, "__len__"):
+            var = var * np.ones(len(model[1]))
+        elif np.all(var == 0):
+            var = np.ones_like(var)
+
+        return np.sum(np.log(var)) if self.variance_func is not None else 0
+
+    def rms(self, model, ctx, **params):
         fit, data, var = model
 
         if not hasattr(var, "__len__"):
@@ -244,41 +259,20 @@ class PartialLinearModel(Chi2, Likelihood):
         elif np.all(var == 0):
             var = np.ones_like(var)
 
-        data = data[~np.isinf(var)]
-        basis = fit.model.basis[:, ~np.isinf(var)]
-        resid = fit.residual[~np.isinf(var)]
-        var = var[~np.isinf(var)]
+        mask = ~np.isinf(var)
+        data = data[mask]
+        resid = fit.residual[mask]
+        var = var[mask]
 
-        logdetSig = np.sum(np.log(var)) if self.variance_func is not None else 0
+        return np.nansum(resid ** 2 / var)
 
-        try:
-            logdetCinv = self.logdetCinv
-        except AttributeError:
-            logdetCinv = np.log(np.linalg.det(fit.hessian))
+    def lnl(self, model, **params):
+        # Ensure we don't use flagged channels
+        logdetSig = self.logdet_sig(model, None, **params)
+        logdetCinv = self.logdet_cinv(model, None, **params)
+        rms = self.rms(model, None, **params)
 
-        data[np.isinf(var)] = np.nan
-
-        if self.version == "keith":
-            lnl = -0.5 * (logdetSig + logdetCinv + np.nansum(resid**2 / var))
-        elif self.version == "raul":
-            A = basis
-            B = A.dot(resid / var)
-            try:
-                Q = self.Q
-            except AttributeError:
-                Q = (A / var).dot(A.T)
-            lnl = -0.5 * (
-                logdetCinv
-                + logdetSig
-                + B.T.dot(np.linalg.inv(Q).dot(B))
-                + np.sum(resid**2 / var)
-            )
-        elif self.version == "raul-full":
-            try:
-                newsig = self.sigma_plus_v_inverse
-            except AttributeError:
-                newsig = self._extracted_from_lnl_45(basis, var)
-            lnl = -0.5 * (logdetSig + logdetCinv + resid.dot(newsig.dot(resid)))
+        lnl = -0.5 * (logdetSig + logdetCinv + rms)
 
         if np.isnan(lnl):
             lnl = -np.inf
@@ -301,25 +295,6 @@ class PartialLinearModel(Chi2, Likelihood):
         result = np.linalg.inv(result)
 
         return result
-
-    def tunchat(self, model, ctx, **params):
-        return model[0].fit.model.tunc.parameters
-
-    def tcoshat(self, model, ctx, **params):
-        return model[0].fit.model.tcos.parameters
-
-    def tsinhat(self, model, ctx, **params):
-        return model[0].fit.model.tsin.parameters
-
-    def tloadhat(self, model, ctx, **params):
-        return model[0].fit.model.tload.parameters
-
-    def tfghat(self, model, ctx, **params):
-        return model[0].fit.model.fg.parameters
-
-    def linear(self, model, ctx, **params):
-        fit = model[0]
-        return fit.get_sample()
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -400,9 +375,9 @@ class NoiseWaveLikelihood:
     nw_model: NoiseWaves = attr.ib()
     data: dict = attr.ib()
     sig_by_tns: bool = attr.ib(default=True)
-    version: Literal["mine", "raul", "keith", "raul-full"] = attr.ib(default="keith")
     t_ns_params: ParamVec = attr.ib()
     t_ns_freq_range: tuple[float, float] = attr.ib()
+    derived: tuple[str] = attr.ib()
 
     @t_ns_freq_range.default
     def _tns_fr_default(self):
@@ -434,36 +409,44 @@ class NoiseWaveLikelihood:
             components=(self.t_ns_model,),
             data_func=self.transform_data,
             variance_func=self.transform_variance if self.sig_by_tns else None,
-            version=self.version,
+            derived=tuple(
+                d if hasattr(PartialLinearModel, d) else getattr(self, d)
+                for d in self.derived
+            ),
         )
 
     @classmethod
     def transform_data(cls, ctx: dict, data: dict):
-        tns = np.concatenate((ctx["tns"],) * 4)
+        n = len(data["q"]) // len(ctx["tns"])
+        tns = np.concatenate((ctx["tns"],) * n)
         return data["q"] * tns - data["k0"] * data["T"]
 
     @classmethod
     def transform_variance(cls, ctx: dict, data: dict):
-        tns = np.concatenate((ctx["tns"],) * 4)
-        return data["data_variance"] * tns**2
+        n = len(data["q"]) // len(ctx["tns"])
+        tns = np.concatenate((ctx["tns"],) * n)
+        return data["data_variance"] * tns ** 2
 
     @classmethod
-    def from_calobs(cls, calobs, smooth=1, sig_by_sigq=True, **kwargs):
-        nw_model = NoiseWaves.from_calobs(calobs, smooth=smooth)
+    def from_calobs(cls, calobs, sig_by_sigq=True, sources=None, **kwargs):
+        if sources is None:
+            sources = tuple(calobs._loads.keys())
+
+        loads = {src: load for src, load in calobs._loads.items() if src in sources}
+
+        nw_model = NoiseWaves.from_calobs(calobs, sources=sources)
+
         ks = calobs.get_K(nw_model.freq)
-        k0 = np.concatenate(tuple(ks[src][0] for src in calobs._loads))
+        k0 = np.concatenate(tuple(ks[src][0] for src in sources))
 
         data = {
             "q": np.concatenate(
-                tuple(
-                    bin(load.spectrum.averaged_Q, smooth)
-                    for load in calobs._loads.values()
-                )
+                tuple(load.spectrum.averaged_Q for load in loads.values())
             ),
             "T": np.concatenate(
                 tuple(
-                    bin(load.temp_ave * np.ones_like(calobs.freq.freq), smooth)
-                    for load in calobs._loads.values()
+                    load.temp_ave * np.ones_like(calobs.freq.freq)
+                    for load in loads.values()
                 )
             ),
             "k0": k0,
@@ -472,9 +455,8 @@ class NoiseWaveLikelihood:
         if sig_by_sigq:
             data["data_variance"] = np.concatenate(
                 tuple(
-                    bin(load.spectrum.variance_Q / load.spectrum.n_integrations, smooth)
-                    / smooth
-                    for load in calobs._loads.values()
+                    load.spectrum.variance_Q / load.spectrum.n_integrations
+                    for load in loads.values()
                 )
             )
         else:
@@ -487,11 +469,12 @@ class NoiseWaveLikelihood:
         cls,
         calobs,
         t_ns_width=10,
-        smooth=1,
         variance="data",
         cterms=None,
         wterms=None,
         seed=None,
+        sources=None,
+        as_data: list[str] | None = None,
         **kwargs,
     ):
         """Generate the likelihood by simulating directly from a calobs.
@@ -501,8 +484,13 @@ class NoiseWaveLikelihood:
         differently will mean that the model doesn't correctly describe the simulated
         data).
         """
+        if sources is None:
+            sources = tuple(calobs._loads.keys())
+
+        loads = {src: load for src, load in calobs._loads.items() if src in sources}
+
         nw_model = NoiseWaves.from_calobs(
-            calobs, smooth=smooth, cterms=cterms, wterms=wterms
+            calobs, cterms=cterms, wterms=wterms, sources=sources
         )
         ks = calobs.get_K(nw_model.freq)
         k0 = np.concatenate(tuple(ks[src][0] for src in calobs._loads))
@@ -511,26 +499,15 @@ class NoiseWaveLikelihood:
         if seed:
             np.random.seed(seed)
 
-        temp_ave = {}
-        for load in calobs._loads:
-            if smooth > 1 and load == "hot_load":
-                gain = calobs.hot_load._correction.power_gain(
-                    freq, calobs.hot_load.reflections
-                )
-                # temperature
-                temp_ave[load] = (
-                    gain * calobs.hot_load.spectrum.temp_ave
-                    + (1 - gain) * calobs.hot_load._ambient.temp_ave
-                )
-            else:
-                temp_ave[load] = calobs._loads[load].temp_ave
-
+        temp_ave = {load: calobs._loads[load].temp_ave for load in loads}
         data = {
             "q": {
-                name: simulate_q_from_calobs(
-                    calobs, name, freq=freq if smooth > 1 else None
+                name: (
+                    loads[name].spectrum.averaged_Q
+                    if name in as_data
+                    else simulate_q_from_calobs(calobs, name)
                 )
-                for name in calobs.load_names
+                for name in sources
             },
             "T": np.concatenate(
                 tuple(t * np.ones_like(freq) for t in temp_ave.values())
@@ -539,18 +516,14 @@ class NoiseWaveLikelihood:
         }
 
         # Now Get The Noise
-        if variance == "data":
-            qvar = {
-                name: bin(
-                    load.spectrum.variance_Q / load.spectrum.n_integrations, smooth
-                )
-                / smooth
-                for name, load in calobs._loads.items()
-            }
-        elif isinstance(variance, dict):
-            qvar = {name: variance[name] * np.ones_like(freq) for name in calobs._loads}
-        else:
-            qvar = {name: variance * np.ones_like(freq) for name in calobs._loads}
+        qvar = {}
+        for name, load in loads.items():
+            if variance == "data" or name in as_data:
+                qvar[name] = load.spectrum.variance_Q / load.spectrum.n_integrations
+            elif isinstance(variance, dict):
+                qvar[name] = variance[name] * np.ones_like(freq)
+            else:
+                qvar[name] = variance * np.ones_like(freq)
 
         data["q"] = np.concatenate(
             tuple(
@@ -567,11 +540,13 @@ class NoiseWaveLikelihood:
         else:
             est_tns = est_tns[:cterms]
 
+        middle = est_tns.copy()
+        middle[1:] = 0
         t_ns_params = ParamVec(
             "t_lns",
             length=len(est_tns),
-            min=est_tns - t_ns_width,
-            max=est_tns + t_ns_width,
+            min=middle - t_ns_width,
+            max=middle + t_ns_width,
             fiducial=est_tns,
             ref=[stats.norm(v, scale=1.0) for v in est_tns],
         )
@@ -640,6 +615,44 @@ class NoiseWaveLikelihood:
             t_sin=model.get_model("tsin", x=freq, parameters=params),
             t_load=labcal.calobs.t_load,
         )
+
+    # Start derived parameters
+    @staticmethod
+    def tunchat(model, ctx, **params):
+        return model[0].fit.model.tunc.parameters
+
+    @staticmethod
+    def tcoshat(model, ctx, **params):
+        return model[0].fit.model.tcos.parameters
+
+    @staticmethod
+    def tsinhat(model, ctx, **params):
+        return model[0].fit.model.tsin.parameters
+
+    @staticmethod
+    def tloadhat(model, ctx, **params):
+        return model[0].fit.model.tload.parameters
+
+    @staticmethod
+    def linear(model, ctx, **params):
+        fit = model[0]
+        return fit.get_sample()
+
+    def rms_parts(self, model, ctx, **params):
+        fit, data, var = model
+
+        rms_parts = []
+        n = 0
+        for i, (name, d) in enumerate(self.data.items()):
+            v = var[n : n + len(d)]
+            r = fit.residual[n : n + len(d)]
+
+            mask = (~np.isinf(v)) & (~np.isnan(v))
+
+            rms_parts.append(np.nansum(r[mask] ** 2 / v[mask]))
+            n += len(d)
+
+        return rms_parts
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -882,7 +895,6 @@ class DataCalibrationLikelihood:
             components=(self.t_ns_model,) + self.eor_components,
             data_func=self.transform_data,
             variance_func=self.transform_variance,
-            version="keith",
             verbose=self.verbose,
             subtract_fiducial=self.subtract_fiducial,
             derived=derived,
@@ -1267,7 +1279,6 @@ class LinearFG:
             components=(self.eor,),
             data_func=self.transform_data,
             variance_func=None,
-            version="keith",
         )
 
     def transform_data(self, ctx: dict, data: dict):
