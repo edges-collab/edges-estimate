@@ -428,9 +428,11 @@ class NoiseWaveLikelihood:
         return data["data_variance"] * tns ** 2
 
     @classmethod
-    def from_calobs(cls, calobs, sig_by_sigq=True, sources=None, **kwargs):
+    def from_calobs(cls, calobs, sig_by_sigq=True, sources=None, as_sim=None, **kwargs):
         if sources is None:
             sources = tuple(calobs._loads.keys())
+
+        as_sim = as_sim or []
 
         loads = {src: load for src, load in calobs._loads.items() if src in sources}
 
@@ -441,7 +443,17 @@ class NoiseWaveLikelihood:
 
         data = {
             "q": np.concatenate(
-                tuple(load.spectrum.averaged_Q for load in loads.values())
+                tuple(
+                    simulate_q_from_calobs(calobs, name)
+                    + np.random.normal(
+                        scale=np.sqrt(
+                            load.spectrum.variance_Q / load.spectrum.n_integrations
+                        )
+                    )
+                    if name in as_sim
+                    else load.spectrum.averaged_Q
+                    for name, load in loads.items()
+                )
             ),
             "T": np.concatenate(
                 tuple(
