@@ -318,15 +318,13 @@ class LogPoly(Foreground):
 
     poly_order = attr.ib(5, converter=int, kw_only=True)
     
-    def __attrs_post_init__(self):
-        super().__attrs_post_init__()
-
+   
     @cached_property
     def base_parameters(self):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        for i in range(1, self.poly_order):
+        for i in range(1, self.poly_order+1):
             p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
         return tuple(p)
 
@@ -336,10 +334,10 @@ class LogPoly(Foreground):
 
     @cached_property
     def basis(self):
-        return np.array([self.logf ** i for i in range(self.poly_order)])
+        return np.array([self.logf ** i for i in range(1, self.poly_order+1)])
 
     def model(self, **p):
-        pp = [p[f"p{i}"] for i in range(1,self.poly_order)]
+        pp = [p[f"p{i}"] for i in range(1,self.poly_order+1)]
        
-        terms = [pp[i] * self.basis[i] for i in range(self.poly_order)]
+        terms = [pp[i] * self.basis[i] for i in range(1, self.poly_order+1)]
         return 10 ** np.sum(terms, axis=0)
