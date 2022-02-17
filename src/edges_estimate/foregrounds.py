@@ -318,8 +318,8 @@ class LogPoly(Foreground):
 
     poly_order = attr.ib(5, converter=int, kw_only=True)
 <<<<<<< HEAD
-    
-   
+
+
 =======
 
     def __attrs_post_init__(self):
@@ -346,7 +346,7 @@ class LogPoly(Foreground):
     def model(self, **p):
 <<<<<<< HEAD
         pp = [p[f"p{i}"] for i in range(1,self.poly_order+1)]
-       
+
         terms = [pp[i] * self.basis[i] for i in range(1, self.poly_order+1)]
         return 10 ** np.sum(terms, axis=0)
 =======
