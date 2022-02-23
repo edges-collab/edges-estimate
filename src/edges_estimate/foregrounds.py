@@ -318,16 +318,15 @@ class LogPoly(Foreground):
 
     poly_order = attr.ib(5, converter=int, kw_only=True)
 
-    
     @cached_property
     def base_parameters(self):
         p = [
             Parameter("p0", 2, latex=r"p_0"),
-            ]
+        ]
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        for i in range(1, self.poly_order+1):
+        for i in range(1, self.poly_order + 1):
             p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
         return tuple(p)
 
