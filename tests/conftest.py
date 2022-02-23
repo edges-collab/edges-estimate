@@ -5,9 +5,9 @@ from edges_cal import Calibration
 from edges_cal.modelling import LinLog
 from pathlib import Path
 from scipy import stats
-
+from edges_estimate.foregrounds import LogPoly
 from edges_estimate.eor_models import AbsorptionProfile
-
+import numpy as np
 
 @pytest.fixture(scope="session")
 def data_path() -> Path:
@@ -71,3 +71,9 @@ def fiducial_eor(calobs):
 @pytest.fixture(scope="function")
 def fiducial_fg():
     return LinLog(n_terms=5, parameters=[2000, 10, -10, 5, -5])
+
+
+@pytest.fixture(scope="function")
+def fiducial_fg_logpoly():
+    return LogPoly(freqs= np.linspace(50,100,100), poly_order=2, params={'p0':{'fiducial':2,'min':-5,'max':5},'p1':{'fiducial':-2.5, 'min':-3,'max':-2},'p2':{'fiducial':50,'min':-100,'max':100}})
+
