@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import attr
+import logging
 import numpy as np
 from cached_property import cached_property
 from edges_cal import receiver_calibration_func as rcf
@@ -24,6 +25,8 @@ from yabf import Component, Likelihood, Parameter, ParameterVector, ParamVec
 from yabf.chi2 import Chi2, MultiComponentChi2
 
 from .eor_models import AbsorptionProfile
+
+logger = logging.getLogger(__name__)
 
 
 def _positive(x):
@@ -282,6 +285,9 @@ class PartialLinearModel(Chi2, Likelihood):
 
         if self.verbose:
             print(params, lnl)
+
+        if np.isnan(lnl) or np.isinf(lnl):
+            logger.warn(f"Got bad log-likelihood: {lnl} for params: {params}")
 
         return lnl
 
