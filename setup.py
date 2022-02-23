@@ -4,4 +4,4 @@
 
 from setuptools import setup
 
-setup()
+setup(setup_requires=["setuptools_scm>=6.2"], use_scm_version=True)
