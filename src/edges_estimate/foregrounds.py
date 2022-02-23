@@ -337,10 +337,10 @@ class LogPoly(Foreground):
 
     @cached_property
     def basis(self):
-        return np.array([self.logf ** i for i in range(self.poly_order+1)])
+        return np.array([self.logf ** i for i in range(self.poly_order + 1)])
 
     def model(self, **p):
-        pp = [p[f"p{i}"] for i in range(self.poly_order+1)]
+        pp = [p[f"p{i}"] for i in range(self.poly_order + 1)]
 
-        terms = [pp[i] * self.basis[i] for i in range(self.poly_order+1)]
+        terms = [pp[i] * self.basis[i] for i in range(self.poly_order + 1)]
         return 10 ** np.sum(terms, axis=0)
