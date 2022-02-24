@@ -302,3 +302,44 @@ class Bias(Component):
                     break  # only add to one thing, otherwise it's doubling up.
                 else:
                     ctx[key] *= bias
+
+
+@attr.s
+class LogPoly(Foreground):
+    """
+    LogPoly model from Sims et.al. 2020 (Equation 18)
+    T_{Fg} = 10^sum(d_i*log10(ν/ν_0)^i)_{i=0 to N}
+    Parameters
+    ----------
+    poly_order : int
+        The maximum polynomial order will be `poly_order `. There are `poly_order+1`
+        total parameters.
+    """
+
+    poly_order = attr.ib(5, converter=int, kw_only=True)
+
+    @cached_property
+    def base_parameters(self):
+        p = [
+            Parameter("p0", 2, latex=r"p_0"),
+        ]
+        assert self.poly_order >= 1, "poly_order must be >= 1"
+
+        # First create the parameters.
+        for i in range(1, self.poly_order + 1):
+            p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
+        return tuple(p)
+
+    @cached_property
+    def logf(self):
+        return np.log10(self.f)
+
+    @cached_property
+    def basis(self):
+        return np.array([self.logf ** i for i in range(self.poly_order + 1)])
+
+    def model(self, **p):
+        pp = [p[f"p{i}"] for i in range(self.poly_order + 1)]
+
+        terms = [pp[i] * self.basis[i] for i in range(self.poly_order + 1)]
+        return 10 ** np.sum(terms, axis=0)
