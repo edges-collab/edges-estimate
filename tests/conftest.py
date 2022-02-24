@@ -1,13 +1,15 @@
 import pytest
 
+import numpy as np
 from edges_analysis.analysis.calibrate import LabCalibration
 from edges_cal import Calibration
 from edges_cal.modelling import LinLog
 from pathlib import Path
 from scipy import stats
-from edges_estimate.foregrounds import LogPoly
+
 from edges_estimate.eor_models import AbsorptionProfile
-import numpy as np
+from edges_estimate.foregrounds import LogPoly
+
 
 @pytest.fixture(scope="session")
 def data_path() -> Path:
@@ -75,5 +77,12 @@ def fiducial_fg():
 
 @pytest.fixture(scope="function")
 def fiducial_fg_logpoly():
-    return LogPoly(freqs= np.linspace(50,100,100), poly_order=2, params={'p0':{'fiducial':2,'min':-5,'max':5},'p1':{'fiducial':-2.5, 'min':-3,'max':-2},'p2':{'fiducial':50,'min':-100,'max':100}})
-
+    return LogPoly(
+        freqs=np.linspace(50, 100, 100),
+        poly_order=2,
+        params={
+            "p0": {"fiducial": 2, "min": -5, "max": 5},
+            "p1": {"fiducial": -2.5, "min": -3, "max": -2},
+            "p2": {"fiducial": 50, "min": -100, "max": 100},
+        },
+    )
