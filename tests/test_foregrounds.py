@@ -17,5 +17,5 @@ def test_retrieve_params(fiducial_fg_logpoly):
     )
     a = run_map(lk)
     assert a.success
-    assert np.allclose(a.x, [2,-2.5,50])
+    assert np.allclose(a.x, [2, -2.5, 50])
     assert len(a.x) == 3
