@@ -13,12 +13,12 @@ from edges_estimate.likelihoods import DataCalibrationLikelihood
 
 @pytest.fixture(scope="function")
 def calobs_freq(calobs):
-    return calobs.freq.freq
+    return calobs.freq.freq.to_value("MHz")
 
 
 @pytest.fixture(scope="function")
 def calobs_freq_smoothed8(calobs):
-    return calobs.freq.freq[::8]
+    return calobs.freq.freq[::8].to_value("MHz")
 
 
 @pytest.fixture(scope="function")
@@ -33,7 +33,10 @@ def get_tns_model(calobs, ideal=True):
         p = calobs.C1_poly.coeffs[::-1] * calobs.t_load_ns
 
     t_ns_model = Polynomial(
-        parameters=p, transform=UnitTransform(range=(calobs.freq.min, calobs.freq.max))
+        parameters=p,
+        transform=UnitTransform(
+            range=(calobs.freq.min.to_value("MHz"), calobs.freq.max.to_value("MHz"))
+        ),
     )
 
     t_ns_params = ParamVec(
