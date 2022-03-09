@@ -8,7 +8,7 @@ from pathlib import Path
 from scipy import stats
 
 from edges_estimate.eor_models import AbsorptionProfile
-from edges_estimate.foregrounds import LogPoly, DampedOscillations
+from edges_estimate.foregrounds import DampedOscillations, LogPoly
 
 
 @pytest.fixture(scope="session")

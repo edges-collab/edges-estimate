@@ -231,7 +231,9 @@ class DampedOscillations(Foreground):
 
     def model(self, **p):
         phase = 2 * np.pi * self.freqs / p["P"]
-        return (self.f)**p["b"] *(p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase))
+        return (self.f) ** p["b"] * (
+            p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase)
+        )
 
 
 @attr.s
