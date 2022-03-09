@@ -219,6 +219,7 @@ class Sinusoid(Foreground):
     def model(self, **p):
         return p["amp"] * np.sin(2 * np.pi * self.freqs / p["lambda"] + p["phase"])
 
+
 @attr.s
 class Sinusoid_cossin(Foreground):
     base_parameters = [
@@ -229,7 +230,10 @@ class Sinusoid_cossin(Foreground):
     ]
 
     def model(self, **p):
-        return (self.f)**p["b"] *(p["amp0"] * np.sin(2 * np.pi * self.freqs / p["P"]) + p["amp1"] * np.cos(2 * np.pi * self.freqs / p["P"]))
+        return (self.f) ** p["b"] * (
+            p["amp0"] * np.sin(2 * np.pi * self.freqs / p["P"])
+            + p["amp1"] * np.cos(2 * np.pi * self.freqs / p["P"])
+        )
 
 
 @attr.s
