@@ -19,3 +19,9 @@ def test_retrieve_params(fiducial_fg_logpoly):
     assert a.success
     assert np.allclose(a.x, [2, -2.5, 50])
     assert len(a.x) == 3
+
+def test_damped_oscillations(fiducial_dampedoscillations):
+    spec = fiducial_dampedoscillations()
+    print(spec)
+    assert np.allclose(spec["DampedOscillations_spectrum"],0)
+    assert len(spec["DampedOscillations_spectrum"]) ==100

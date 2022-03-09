@@ -220,16 +220,17 @@ class Sinusoid(Foreground):
         return p["amp"] * np.sin(2 * np.pi * self.freqs / p["lambda"] + p["phase"])
 
 @attr.s
-class Sinusoid_cossin(Foreground):
+class DampedOscillations(Foreground):
     base_parameters = [
-        Parameter("amp0", 0, min=0, max=1, latex=r"A_{\rm sin}"),
-        Parameter("amp1", 0, min=0, max=1, latex=r"A_{\rm cos}"),
-        Parameter("P", 10, min=1, max=30, latex=r"\P_{\rm MHz}"),
-        Parameter("b", 0, min=-4, max=4, latex=r"\b"),
+        Parameter("amp_sin", 10e-10, min=-10, max=1000, latex=r"A_{\rm sin}"),
+        Parameter("amp_cos", 10e-10, min=-10, max=1000, latex=r"A_{\rm cos}"),
+        Parameter("P", 10, min=1, max=np.inf, latex=r"P_{\rm MHz}"),
+        Parameter("b", 0, min=-10, max=10, latex=r"b"),
     ]
 
     def model(self, **p):
-        return (self.f)**p["b"] *(p["amp0"] * np.sin(2 * np.pi * self.freqs / p["P"]) + p["amp1"] * np.cos(2 * np.pi * self.freqs / p["P"]))
+        phase = 2 * np.pi * self.freqs / p["P"]
+        return (self.f)**p["b"] *(p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase))
 
 
 @attr.s
