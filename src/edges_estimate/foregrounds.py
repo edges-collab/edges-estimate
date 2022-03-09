@@ -219,6 +219,7 @@ class Sinusoid(Foreground):
     def model(self, **p):
         return p["amp"] * np.sin(2 * np.pi * self.freqs / p["lambda"] + p["phase"])
 
+
 @attr.s
 class DampedOscillations(Foreground):
     base_parameters = [
