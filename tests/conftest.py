@@ -2,7 +2,7 @@ import pytest
 
 import numpy as np
 from edges_analysis.analysis.calibrate import LabCalibration
-from edges_cal import Calibration
+from edges_cal import Calibrator
 from edges_cal.modelling import LinLog
 from pathlib import Path
 from scipy import stats
@@ -17,23 +17,23 @@ def data_path() -> Path:
 
 
 @pytest.fixture(scope="session")
-def calobs(data_path) -> Calibration:
-    return Calibration(data_path / "test-calfile.h5")
+def calobs(data_path) -> Calibrator:
+    return Calibrator.from_old_calfile(data_path / "test-calfile.h5")
 
 
 @pytest.fixture(scope="session")
-def labcal(calobs, data_path) -> Calibration:
+def labcal(calobs, data_path) -> Calibrator:
     return LabCalibration(calobs=calobs, s11_files=sorted(data_path.glob("*.s1p")))
 
 
 @pytest.fixture(scope="session")
-def calobs12(data_path) -> Calibration:
+def calobs12(data_path) -> Calibrator:
     """Calobs with 12 c/w terms."""
-    return Calibration(data_path / "test-calfile-12.h5")
+    return Calibrator.from_old_calfile(data_path / "test-calfile-12.h5")
 
 
 @pytest.fixture(scope="session")
-def labcal12(calobs12, data_path) -> Calibration:
+def labcal12(calobs12, data_path) -> Calibrator:
     return LabCalibration(calobs=calobs12, s11_files=sorted(data_path.glob("*.s1p")))
 
 
