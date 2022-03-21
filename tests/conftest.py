@@ -8,7 +8,7 @@ from pathlib import Path
 from scipy import stats
 
 from edges_estimate.eor_models import AbsorptionProfile
-from edges_estimate.foregrounds import LogPoly
+from edges_estimate.foregrounds import DampedOscillations, LogPoly
 
 
 @pytest.fixture(scope="session")
@@ -84,5 +84,18 @@ def fiducial_fg_logpoly():
             "p0": {"fiducial": 2, "min": -5, "max": 5},
             "p1": {"fiducial": -2.5, "min": -3, "max": -2},
             "p2": {"fiducial": 50, "min": -100, "max": 100},
+        },
+    )
+
+
+@pytest.fixture(scope="function")
+def fiducial_dampedoscillations():
+    return DampedOscillations(
+        freqs=np.linspace(50, 100, 100),
+        params={
+            "amp_sin": {"fiducial": 0, "min": -5, "max": 5},
+            "amp_cos": {"fiducial": 0, "min": -3, "max": -2},
+            "P": {"fiducial": 15, "min": -100, "max": 100},
+            "b": {"fiducial": 1, "min": -100, "max": 100},
         },
     )

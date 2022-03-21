@@ -221,6 +221,22 @@ class Sinusoid(Foreground):
 
 
 @attr.s
+class DampedOscillations(Foreground):
+    base_parameters = [
+        Parameter("amp_sin", 10e-10, min=-10, max=1000, latex=r"A_{\rm sin}"),
+        Parameter("amp_cos", 10e-10, min=-10, max=1000, latex=r"A_{\rm cos}"),
+        Parameter("P", 10, min=1, max=np.inf, latex=r"P_{\rm MHz}"),
+        Parameter("b", 0, min=-10, max=10, latex=r"b"),
+    ]
+
+    def model(self, **p):
+        phase = 2 * np.pi * self.freqs / p["P"]
+        return (self.f) ** p["b"] * (
+            p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase)
+        )
+
+
+@attr.s
 class DampedSinusoid(Component):
     freqs: np.ndarray = attr.ib(kw_only=True, eq=attr.cmp_using(eq=np.array_equal))
     provides = ("sin_spectrum",)
