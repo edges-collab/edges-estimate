@@ -23,7 +23,9 @@ def calobs(data_path) -> Calibrator:
 
 @pytest.fixture(scope="session")
 def labcal(calobs, data_path) -> Calibrator:
-    return LabCalibration(calobs=calobs, s11_files=sorted(data_path.glob("*.s1p")))
+    return LabCalibration.from_s11_files(
+        calobs=calobs, s11_files=sorted(data_path.glob("*.s1p"))
+    )
 
 
 @pytest.fixture(scope="session")
@@ -34,7 +36,9 @@ def calobs12(data_path) -> Calibrator:
 
 @pytest.fixture(scope="session")
 def labcal12(calobs12, data_path) -> Calibrator:
-    return LabCalibration(calobs=calobs12, s11_files=sorted(data_path.glob("*.s1p")))
+    return LabCalibration.from_s11_files(
+        calobs=calobs12, s11_files=sorted(data_path.glob("*.s1p"))
+    )
 
 
 @pytest.fixture(scope="session")

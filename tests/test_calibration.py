@@ -2,6 +2,7 @@ import pytest
 
 import matplotlib as mpl
 import numpy as np
+from astropy import units as u
 from edges_cal.modelling import Polynomial, UnitTransform
 from edges_cal.simulate import simulate_qant_from_calobs
 from scipy import stats
@@ -62,15 +63,16 @@ def sim_antenna_q(labcal, fg, eor, ideal_tns=True, loss=1, bm_corr=1):
         calobs,
         ant_s11=labcal.antenna_s11_model(eor.freqs),
         ant_temp=spec,
-        scale_model=scale_model,
+        scale_model=lambda f: scale_model(f.to_value("MHz")),
         loss=loss,
-        freq=eor.freqs,
+        freq=eor.freqs * u.MHz,
         bm_corr=bm_corr,
     )
 
 
 def get_likelihood(
     labcal,
+    calobs,
     qvar_ant,
     fg,
     eor,
@@ -81,7 +83,6 @@ def get_likelihood(
     bm_corr=1,
     seed=1234,
 ):
-    calobs = labcal.calobs
     q = sim_antenna_q(labcal, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr)
 
     if isinstance(qvar_ant, (int, float)):
@@ -97,13 +98,16 @@ def get_likelihood(
     if ideal_tns:
         scale_model = Polynomial(
             parameters=np.array(tns_params.fiducial) / labcal.calobs.t_load_ns,
-            transform=UnitTransform(range=(calobs.freq.min, calobs.freq.max)),
+            transform=UnitTransform(
+                range=(calobs.freq.min.to_value("MHz"), calobs.freq.max.to_value("MHz"))
+            ),
         )
     else:
         scale_model = None
 
     return DataCalibrationLikelihood.from_labcal(
         labcal,
+        calobs,
         q_ant=q,
         qvar_ant=qvar_ant,
         fg_model=fg,
@@ -254,10 +258,11 @@ def unity_loss(x):
 
 
 @pytest.mark.parametrize(
-    "lc,qvar_ant,cal_noise,simulate,ideal_tns,atol,fsky,loss,bm_corr",
+    "lc,cl,qvar_ant,cal_noise,simulate,ideal_tns,atol,fsky,loss,bm_corr",
     [
         (
             "labcal",
+            "calobs",
             0.0,
             0.0,
             True,
@@ -269,6 +274,7 @@ def unity_loss(x):
         ),  # No noise
         (
             "labcal",
+            "calobs",
             1e-10,
             1e-10,
             True,
@@ -280,6 +286,7 @@ def unity_loss(x):
         ),  # Small constant noise
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -291,6 +298,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions
         (
             "labcal12",
+            "calobs12",
             1e-10,
             "data",
             False,
@@ -302,6 +310,7 @@ def unity_loss(x):
         ),  # Actual cal data
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -313,6 +322,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions with fewer sky freqs
         (
             "labcal",
+            "calobs",
             1e-12,
             "data",
             True,
@@ -324,6 +334,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions with different freq range
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -335,6 +346,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions WITH LOSS
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -348,6 +360,7 @@ def unity_loss(x):
 )
 def test_cal_data_likelihood(
     lc,
+    cl,
     fiducial_fg,
     qvar_ant,
     cal_noise,
@@ -362,10 +375,12 @@ def test_cal_data_likelihood(
 ):
     fsky = request.getfixturevalue(fsky)
     labcal = request.getfixturevalue(lc)
+    calobs = request.getfixturevalue(cl)
     eor = get_eor(fsky)
 
     lk = get_likelihood(
         labcal,
+        calobs,
         qvar_ant=qvar_ant,
         fg=fiducial_fg,
         eor=eor,

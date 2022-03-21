@@ -801,32 +801,31 @@ class NoiseWavesPlusFG:
 
     @classmethod
     def from_labcal(
-        cls, labcal, fg_model=LinLog(n_terms=5), **kwargs
+        cls, labcal, calobs, fg_model=LinLog(n_terms=5), **kwargs
     ) -> NoiseWavesPlusFG:
         """Initialize a noise wave model from a calibration observation."""
         if fg_model.parameters is not None:
-            c2 = (-labcal.calobs.C2_poly.coefficients[::-1]).tolist()
+            c2 = (-labcal.calobs._C2.coefficients[::-1]).tolist()
             c2[0] += labcal.calobs.t_load
 
             params = (
-                labcal.calobs.Tunc_poly.coefficients[::-1].tolist()
-                + labcal.calobs.Tcos_poly.coefficients[::-1].tolist()
-                + labcal.calobs.Tsin_poly.coefficients[::-1].tolist()
+                labcal.calobs._Tunc.coefficients[::-1].tolist()
+                + labcal.calobs._Tcos.coefficients[::-1].tolist()
+                + labcal.calobs._Tsin.coefficients[::-1].tolist()
                 + c2
-                + fg_model.parameters.tolist()
+                + list(fg_model.parameters)
             )
         else:
             params = None
 
         gamma_src = {
-            name: load.reflections.s11_model
-            for name, load in labcal.calobs._loads.items()
+            name: load.reflections.s11_model for name, load in calobs.loads.items()
         }
 
         return cls(
-            freq=labcal.calobs.freq.freq,
+            freq=calobs.freq.freq,
             gamma_src=gamma_src,
-            gamma_rec=labcal.lna_s11,
+            gamma_rec=labcal.calobs.receiver_s11,
             gamma_ant=labcal.antenna_s11_model,
             c_terms=labcal.calobs.cterms,
             w_terms=labcal.calobs.wterms,
@@ -935,6 +934,7 @@ class DataCalibrationLikelihood:
     def from_labcal(
         cls,
         labcal,
+        calobs,
         q_ant,
         qvar_ant,
         loss: float | np.ndarray = 1.0,
@@ -948,7 +948,12 @@ class DataCalibrationLikelihood:
         **kwargs,
     ):
         nwfg_model = NoiseWavesPlusFG.from_labcal(
-            labcal, fg_model=fg_model, field_freq=field_freq, loss=loss, bm_corr=bm_corr
+            labcal,
+            calobs,
+            fg_model=fg_model,
+            field_freq=field_freq,
+            loss=loss,
+            bm_corr=bm_corr,
         )
 
         k0 = {
