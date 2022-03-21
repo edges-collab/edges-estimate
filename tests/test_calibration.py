@@ -51,13 +51,13 @@ def get_tns_model(calobs, ideal=True):
     return t_ns_model, t_ns_params
 
 
-def sim_antenna_q(labcal, fg, eor, ideal_tns=True, loss=1, bm_corr=1):
-    calobs = labcal.calobs
-
+def sim_antenna_q(labcal, calobs, fg, eor, ideal_tns=True, loss=1, bm_corr=1):
     spec = fg(x=eor.freqs) + eor()["eor_spectrum"]
 
     tns_model, _ = get_tns_model(calobs, ideal=ideal_tns)
-    scale_model = tns_model.with_params(tns_model.parameters / calobs.t_load_ns)
+    scale_model = tns_model.with_params(
+        np.array(tns_model.parameters) / calobs.t_load_ns
+    )
 
     return simulate_qant_from_calobs(
         calobs,
@@ -83,10 +83,12 @@ def get_likelihood(
     bm_corr=1,
     seed=1234,
 ):
-    q = sim_antenna_q(labcal, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr)
+    q = sim_antenna_q(
+        labcal, calobs, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr
+    )
 
     if isinstance(qvar_ant, (int, float)):
-        qvar_ant = qvar_ant * np.ones_like(eor.freqs)
+        qvar_ant = qvar_ant * np.ones(len(eor.freqs))
 
     if seed:
         np.random.seed(seed)
@@ -113,10 +115,10 @@ def get_likelihood(
         fg_model=fg,
         eor_components=(eor,),
         sim=simulate,
-        scale_model=scale_model,
+        scale_model=lambda f: scale_model(f.to_value("MHz")),
         t_ns_params=tns_params,
         cal_noise=cal_noise,
-        field_freq=eor.freqs,
+        field_freq=eor.freqs * u.MHz,
         loss=loss,
         bm_corr=bm_corr,
     )
@@ -394,11 +396,11 @@ def test_cal_data_likelihood(
     res = run_map(lk.partial_linear_model)
     eorspec = lk.partial_linear_model.get_ctx(params=res.x)
 
-    tns_model, _ = get_tns_model(labcal.calobs, ideal=ideal_tns)
-    tns_model = tns_model(labcal.calobs.freq.freq)
+    tns_model, _ = get_tns_model(calobs, ideal=ideal_tns)
+    tns_model = tns_model(labcal.calobs.freq.freq.to_value("MHz"))
 
     if plt == mpl.pyplot:
-        view_results(lk, res, labcal.calobs, eor, plt, sim_tns=simulate)
+        view_results(lk, res, calobs, eor, plt, sim_tns=simulate)
 
     np.testing.assert_allclose(tns_model, eorspec["tns"], atol=0, rtol=1e-2)
     np.testing.assert_allclose(

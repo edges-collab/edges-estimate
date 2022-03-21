@@ -4,6 +4,7 @@ import attr
 import numpy as np
 from cached_property import cached_property
 from edges_cal import receiver_calibration_func as rcf
+from edges_cal import types as tp
 from edges_cal.modelling import (
     CompositeModel,
     LinLog,
@@ -542,7 +543,7 @@ class NoiseWaveLikelihood:
     @cached_property
     def t_ns_model(self):
         return TNS(
-            x=self.nw_model.freq,
+            x=self.nw_model.freq.to_value("MHz"),
             c_terms=self.nw_model.c_terms,
             params=self.t_ns_params.get_params(),
         )
@@ -658,11 +659,11 @@ class NoiseWaveLikelihood:
 
 @attr.s(frozen=True, kw_only=True)
 class NoiseWavesPlusFG:
-    freq: np.ndarray = attr.ib()
+    freq: tp.FreqType = attr.ib()
     _gamma_src: dict[str, np.ndarray] = attr.ib()
     gamma_ant: np.ndarray = attr.ib()
     gamma_rec: Callable = attr.ib()
-    field_freq: np.ndarray = attr.ib()
+    field_freq: tp.FreqType = attr.ib()
     c_terms: int = attr.ib(default=5)
     w_terms: int = attr.ib(default=6)
     fg_model: Model = attr.ib(default=LinLog(n_terms=5))
@@ -711,6 +712,10 @@ class NoiseWavesPlusFG:
         K[0][: len(self.freq) * (len(self.gamma_src) - 1)] = 0.0
         K[0][-len(self.field_freq) :] *= self.loss / self.bm_corr
 
+        transform = UnitTransform(
+            range=[self.freq.to_value("MHz").min(), self.freq.to_value("MHz").max()]
+        )
+
         return CompositeModel(
             models={
                 "tunc": Polynomial(
@@ -718,21 +723,21 @@ class NoiseWavesPlusFG:
                     parameters=self.parameters[: self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "tcos": Polynomial(
                     n_terms=self.w_terms,
                     parameters=self.parameters[self.w_terms : 2 * self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "tsin": Polynomial(
                     n_terms=self.w_terms,
                     parameters=self.parameters[2 * self.w_terms : 3 * self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "tload": Polynomial(
                     n_terms=self.c_terms,
@@ -743,7 +748,7 @@ class NoiseWavesPlusFG:
                         if self.parameters is not None
                         else None
                     ),
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "fg": self.fg_model,
             },
@@ -870,7 +875,7 @@ class DataCalibrationLikelihood:
         else:
             t_ns_params = self.t_ns_params
         return TNS(
-            x=self.nwfg_model.freq,
+            x=self.nwfg_model.freq.to_value("MHz"),
             field_freq=self.nwfg_model.field_freq,
             c_terms=self.nwfg_model.c_terms,
             params=t_ns_params.get_params(),
@@ -922,6 +927,10 @@ class DataCalibrationLikelihood:
     def transform_variance(self, ctx: dict, data: dict):
         tns = ctx["tns"]
         field_tns = ctx["tns_field"]
+        print("ftns: ", field_tns)
+        print("tns:", tns)
+        print("dv: ", data["data_variance"][self.src_names[0]])
+
         return np.concatenate(
             [
                 data["data_variance"][src]
@@ -965,23 +974,18 @@ class DataCalibrationLikelihood:
         }
 
         if not sim:
-            q = {
-                name: load.spectrum.averaged_Q
-                for name, load in labcal.calobs._loads.items()
-            }
+            q = {name: load.spectrum.averaged_Q for name, load in calobs.loads.items()}
         else:
             q = {
-                name: simulate_q_from_calobs(
-                    labcal.calobs, name, scale_model=scale_model
-                )
-                for name in labcal.calobs.load_names
+                name: simulate_q_from_calobs(calobs, name, scale_model=scale_model)
+                for name in calobs.load_names
             }
 
         q["ant"] = q_ant
 
         T = {
             name: load.temp_ave * np.ones(labcal.calobs.freq.n)
-            for name, load in labcal.calobs._loads.items()
+            for name, load in calobs.loads.items()
         }
         qvar = {"ant": qvar_ant}
 
@@ -989,15 +993,12 @@ class DataCalibrationLikelihood:
             qvar.update(
                 {
                     name: load.spectrum.variance_Q / load.spectrum.n_integrations
-                    for name, load in labcal.calobs._loads.items()
+                    for name, load in calobs.loads.items()
                 }
             )
         else:
             qvar.update(
-                {
-                    name: cal_noise * np.ones_like(labcal.calobs.freq.freq)
-                    for name in labcal.calobs._loads
-                }
+                {name: cal_noise * np.ones(calobs.freq.n) for name in calobs.loads}
             )
 
         if sim:

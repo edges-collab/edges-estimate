@@ -1,5 +1,6 @@
 import pytest
 
+import hickle
 import numpy as np
 from edges_analysis.analysis.calibrate import LabCalibration
 from edges_cal import Calibrator
@@ -18,7 +19,7 @@ def data_path() -> Path:
 
 @pytest.fixture(scope="session")
 def calobs(data_path) -> Calibrator:
-    return Calibrator.from_old_calfile(data_path / "test-calfile.h5")
+    return hickle.load(data_path / "test_calfile.h5")
 
 
 @pytest.fixture(scope="session")
@@ -29,9 +30,9 @@ def labcal(calobs, data_path) -> Calibrator:
 
 
 @pytest.fixture(scope="session")
-def calobs12(data_path) -> Calibrator:
+def calobs12(calobs) -> Calibrator:
     """Calobs with 12 c/w terms."""
-    return Calibrator.from_old_calfile(data_path / "test-calfile-12.h5")
+    return calobs.clone(cterms=12, wterms=12)
 
 
 @pytest.fixture(scope="session")
