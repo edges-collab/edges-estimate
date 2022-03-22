@@ -2,6 +2,7 @@ import pytest
 
 import matplotlib as mpl
 import numpy as np
+from astropy import units as u
 from edges_cal.modelling import Polynomial, UnitTransform
 from edges_cal.simulate import simulate_qant_from_calobs
 from scipy import stats
@@ -13,12 +14,12 @@ from edges_estimate.likelihoods import DataCalibrationLikelihood
 
 @pytest.fixture(scope="function")
 def calobs_freq(calobs):
-    return calobs.freq.freq
+    return calobs.freq.freq.to_value("MHz")
 
 
 @pytest.fixture(scope="function")
 def calobs_freq_smoothed8(calobs):
-    return calobs.freq.freq[::8]
+    return calobs.freq.freq[::8].to_value("MHz")
 
 
 @pytest.fixture(scope="function")
@@ -33,7 +34,10 @@ def get_tns_model(calobs, ideal=True):
         p = calobs.C1_poly.coeffs[::-1] * calobs.t_load_ns
 
     t_ns_model = Polynomial(
-        parameters=p, transform=UnitTransform(range=(calobs.freq.min, calobs.freq.max))
+        parameters=p,
+        transform=UnitTransform(
+            range=(calobs.freq.min.to_value("MHz"), calobs.freq.max.to_value("MHz"))
+        ),
     )
 
     t_ns_params = ParamVec(
@@ -47,27 +51,28 @@ def get_tns_model(calobs, ideal=True):
     return t_ns_model, t_ns_params
 
 
-def sim_antenna_q(labcal, fg, eor, ideal_tns=True, loss=1, bm_corr=1):
-    calobs = labcal.calobs
-
+def sim_antenna_q(labcal, calobs, fg, eor, ideal_tns=True, loss=1, bm_corr=1):
     spec = fg(x=eor.freqs) + eor()["eor_spectrum"]
 
     tns_model, _ = get_tns_model(calobs, ideal=ideal_tns)
-    scale_model = tns_model.with_params(tns_model.parameters / calobs.t_load_ns)
+    scale_model = tns_model.with_params(
+        np.array(tns_model.parameters) / calobs.t_load_ns
+    )
 
     return simulate_qant_from_calobs(
         calobs,
         ant_s11=labcal.antenna_s11_model(eor.freqs),
         ant_temp=spec,
-        scale_model=scale_model,
+        scale_model=lambda f: scale_model(f.to_value("MHz")),
         loss=loss,
-        freq=eor.freqs,
+        freq=eor.freqs * u.MHz,
         bm_corr=bm_corr,
     )
 
 
 def get_likelihood(
     labcal,
+    calobs,
     qvar_ant,
     fg,
     eor,
@@ -78,11 +83,12 @@ def get_likelihood(
     bm_corr=1,
     seed=1234,
 ):
-    calobs = labcal.calobs
-    q = sim_antenna_q(labcal, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr)
+    q = sim_antenna_q(
+        labcal, calobs, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr
+    )
 
     if isinstance(qvar_ant, (int, float)):
-        qvar_ant = qvar_ant * np.ones_like(eor.freqs)
+        qvar_ant = qvar_ant * np.ones(len(eor.freqs))
 
     if seed:
         np.random.seed(seed)
@@ -94,22 +100,25 @@ def get_likelihood(
     if ideal_tns:
         scale_model = Polynomial(
             parameters=np.array(tns_params.fiducial) / labcal.calobs.t_load_ns,
-            transform=UnitTransform(range=(calobs.freq.min, calobs.freq.max)),
+            transform=UnitTransform(
+                range=(calobs.freq.min.to_value("MHz"), calobs.freq.max.to_value("MHz"))
+            ),
         )
     else:
         scale_model = None
 
     return DataCalibrationLikelihood.from_labcal(
         labcal,
+        calobs,
         q_ant=q,
         qvar_ant=qvar_ant,
         fg_model=fg,
         eor_components=(eor,),
         sim=simulate,
-        scale_model=scale_model,
+        scale_model=lambda f: scale_model(f.to_value("MHz")),
         t_ns_params=tns_params,
         cal_noise=cal_noise,
-        field_freq=eor.freqs,
+        field_freq=eor.freqs * u.MHz,
         loss=loss,
         bm_corr=bm_corr,
     )
@@ -251,10 +260,11 @@ def unity_loss(x):
 
 
 @pytest.mark.parametrize(
-    "lc,qvar_ant,cal_noise,simulate,ideal_tns,atol,fsky,loss,bm_corr",
+    "lc,cl,qvar_ant,cal_noise,simulate,ideal_tns,atol,fsky,loss,bm_corr",
     [
         (
             "labcal",
+            "calobs",
             0.0,
             0.0,
             True,
@@ -266,6 +276,7 @@ def unity_loss(x):
         ),  # No noise
         (
             "labcal",
+            "calobs",
             1e-10,
             1e-10,
             True,
@@ -277,6 +288,7 @@ def unity_loss(x):
         ),  # Small constant noise
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -288,6 +300,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions
         (
             "labcal12",
+            "calobs12",
             1e-10,
             "data",
             False,
@@ -299,6 +312,7 @@ def unity_loss(x):
         ),  # Actual cal data
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -310,6 +324,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions with fewer sky freqs
         (
             "labcal",
+            "calobs",
             1e-12,
             "data",
             True,
@@ -321,6 +336,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions with different freq range
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -332,6 +348,7 @@ def unity_loss(x):
         ),  # Realistic non-constant noise on smooth cal solutions WITH LOSS
         (
             "labcal",
+            "calobs",
             1e-10,
             "data",
             True,
@@ -345,6 +362,7 @@ def unity_loss(x):
 )
 def test_cal_data_likelihood(
     lc,
+    cl,
     fiducial_fg,
     qvar_ant,
     cal_noise,
@@ -359,10 +377,12 @@ def test_cal_data_likelihood(
 ):
     fsky = request.getfixturevalue(fsky)
     labcal = request.getfixturevalue(lc)
+    calobs = request.getfixturevalue(cl)
     eor = get_eor(fsky)
 
     lk = get_likelihood(
         labcal,
+        calobs,
         qvar_ant=qvar_ant,
         fg=fiducial_fg,
         eor=eor,
@@ -376,11 +396,11 @@ def test_cal_data_likelihood(
     res = run_map(lk.partial_linear_model)
     eorspec = lk.partial_linear_model.get_ctx(params=res.x)
 
-    tns_model, _ = get_tns_model(labcal.calobs, ideal=ideal_tns)
-    tns_model = tns_model(labcal.calobs.freq.freq)
+    tns_model, _ = get_tns_model(calobs, ideal=ideal_tns)
+    tns_model = tns_model(labcal.calobs.freq.freq.to_value("MHz"))
 
     if plt == mpl.pyplot:
-        view_results(lk, res, labcal.calobs, eor, plt, sim_tns=simulate)
+        view_results(lk, res, calobs, eor, plt, sim_tns=simulate)
 
     np.testing.assert_allclose(tns_model, eorspec["tns"], atol=0, rtol=1e-2)
     np.testing.assert_allclose(
