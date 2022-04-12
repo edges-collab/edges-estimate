@@ -572,16 +572,16 @@ class NoiseWaveLikelihood:
     @classmethod
     def from_calobs(cls, calobs, sig_by_sigq=True, **kwargs):
         nw_model = NoiseWaves.from_calobs(calobs)
-        k0 = np.concatenate(tuple(calobs.get_K()[src][0] for src in calobs._loads))
+        k0 = np.concatenate(tuple(calobs.get_K()[src][0] for src in calobs.loads))
 
         data = {
             "q": np.concatenate(
-                tuple(load.spectrum.averaged_Q for load in calobs._loads.values())
+                tuple(load.spectrum.averaged_Q for load in calobs.loads.values())
             ),
             "T": np.concatenate(
                 tuple(
                     load.temp_ave * np.ones_like(calobs.freq.freq)
-                    for load in calobs._loads.values()
+                    for load in calobs.loads.values()
                 )
             ),
             "k0": k0,
@@ -591,7 +591,7 @@ class NoiseWaveLikelihood:
             data["data_variance"] = np.concatenate(
                 tuple(
                     load.spectrum.variance_Q / load.spectrum.n_integrations
-                    for load in calobs._loads.values()
+                    for load in calobs.loads.values()
                 )
             )
         else:
