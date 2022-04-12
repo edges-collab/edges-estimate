@@ -8,7 +8,7 @@ def phenom_model(freqs, A, tau, w, nu0):
     B = (
         4
         * (freqs - nu0) ** 2
-        / w ** 2
+        / w**2
         * np.log(-1 / tau * np.log((1 + np.exp(-tau)) / 2))
     )
     return -A * (1 - np.exp(-tau * np.exp(B))) / (1 - np.exp(-tau))
