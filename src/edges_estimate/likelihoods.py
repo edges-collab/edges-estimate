@@ -107,7 +107,7 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
         return np.sqrt(
             (1 / self.weights)
             * (
-                params["alpha_rn"] * model ** 2 / self.radiometer_norm
+                params["alpha_rn"] * model**2 / self.radiometer_norm
                 + params["sigma_wn"] ** 2
             )
         )
@@ -164,7 +164,7 @@ class CalibrationChi2(Likelihood):
             lnl += -np.nansum(
                 np.log(sigma)
                 + (model["Qp"][source] - data[model["data_mask"]]) ** 2
-                / (2 * sigma ** 2)
+                / (2 * sigma**2)
             )
             if np.isnan(lnl):
                 lnl = -np.inf
@@ -416,7 +416,7 @@ class PartialLinearModel(Chi2, Likelihood):
         data[np.isinf(var)] = np.nan
 
         if self.version == "keith":
-            lnl = -0.5 * (logdetSig + logdetCinv + np.nansum(resid ** 2 / var))
+            lnl = -0.5 * (logdetSig + logdetCinv + np.nansum(resid**2 / var))
         elif self.version == "raul":
             A = basis
             B = A.dot(resid / var)
@@ -428,7 +428,7 @@ class PartialLinearModel(Chi2, Likelihood):
                 logdetCinv
                 + logdetSig
                 + B.T.dot(np.linalg.inv(Q).dot(B))
-                + np.sum(resid ** 2 / var)
+                + np.sum(resid**2 / var)
             )
         elif self.version == "raul-full":
             try:
@@ -567,7 +567,7 @@ class NoiseWaveLikelihood:
     @classmethod
     def transform_variance(cls, ctx: dict, data: dict):
         tns = np.concatenate((ctx["tns"],) * 4)
-        return data["data_variance"] * tns ** 2
+        return data["data_variance"] * tns**2
 
     @classmethod
     def from_calobs(cls, calobs, sig_by_sigq=True, **kwargs):
@@ -934,7 +934,7 @@ class DataCalibrationLikelihood:
         return np.concatenate(
             [
                 data["data_variance"][src]
-                * (field_tns ** 2 if src == "ant" else tns ** 2)
+                * (field_tns**2 if src == "ant" else tns**2)
                 for src in self.src_names
             ]
         )

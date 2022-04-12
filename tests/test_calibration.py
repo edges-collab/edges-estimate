@@ -206,7 +206,7 @@ def view_results(
         nu,
         delta,
         color=color,
-        label=fr"Max $\Delta = {np.max(np.abs(delta))*1000:1.2e}$mK",
+        label=rf"Max $\Delta = {np.max(np.abs(delta))*1000:1.2e}$mK",
     )
     ax[1, 0].set_ylabel("Difference [K]")
 
