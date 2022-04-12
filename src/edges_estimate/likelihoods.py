@@ -267,7 +267,7 @@ class PartialLinearModel(Chi2, Likelihood):
         resid = fit.residual[mask]
         var = var[mask]
 
-        return np.nansum(resid ** 2 / var)
+        return np.nansum(resid**2 / var)
 
     def lnl(self, model, **params):
         # Ensure we don't use flagged channels
@@ -431,7 +431,7 @@ class NoiseWaveLikelihood:
     def transform_variance(cls, ctx: dict, data: dict):
         n = len(data["q"]) // len(ctx["tns"])
         tns = np.concatenate((ctx["tns"],) * n)
-        return data["data_variance"] * tns ** 2
+        return data["data_variance"] * tns**2
 
     @classmethod
     def from_calobs(cls, calobs, sig_by_sigq=True, sources=None, as_sim=None, **kwargs):
