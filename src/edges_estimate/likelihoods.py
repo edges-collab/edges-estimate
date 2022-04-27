@@ -568,7 +568,7 @@ class NoiseWaveLikelihood:
 
         nw_model = NoiseWaves.from_calobs(calobs, sources=sources)
 
-        raw_bases = nw_model.get_linear_model(with_K=False).basis
+        raw_bases = nw_model.get_linear_model(with_k=False).basis
 
         freq = calobs.freq.freq.to_value("MHz")
         if s11_systematic_params:
