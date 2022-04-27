@@ -37,7 +37,7 @@ class Scale(Component):
 
     def calculate(self, ctx, **params):
         # can't be scale*(anything) because then there's degeneracies with the other models.
-        return 3 + params["scale"] * np.sin(self.x ** 2)
+        return 3 + params["scale"] * np.sin(self.x**2)
 
 
 @pytest.fixture(scope="module")
