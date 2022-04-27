@@ -3,7 +3,9 @@ from __future__ import annotations
 import attr
 import logging
 import numpy as np
+from astropy import units as u
 from cached_property import cached_property
+from edges_cal import CalibrationObservation
 from edges_cal import receiver_calibration_func as rcf
 from edges_cal import types as tp
 from edges_cal.modelling import (
@@ -15,18 +17,24 @@ from edges_cal.modelling import (
     UnitTransform,
 )
 from edges_cal.simulate import simulate_q_from_calobs
-from edges_cal.tools import bin_array
-from getdist import loadMCSamples
 from matplotlib import pyplot as plt
 from pathlib import Path
 from scipy import stats
-from typing import Callable, Dict, List, Literal, Sequence, Tuple
+from scipy.interpolate import InterpolatedUnivariateSpline as spline
+from typing import Callable, Sequence
 from yabf import Component, Likelihood, Parameter, ParameterVector, ParamVec
 from yabf.chi2 import Chi2, MultiComponentChi2
 
 from .eor_models import AbsorptionProfile
 
 logger = logging.getLogger(__name__)
+
+try:
+    profile  # noqa: F821
+except NameError:
+
+    def profile(fnc):
+        return fnc
 
 
 def _positive(x):
@@ -180,6 +188,7 @@ class PartialLinearModel(Chi2, Likelihood):
     subtract_fiducial: bool = attr.ib(default=False)
     verbose: bool = attr.ib(False)
 
+    @profile
     def _reduce(self, ctx, **params):
         if self.variance_func is None:
             var = self.data["data_variance"]
@@ -210,12 +219,15 @@ class PartialLinearModel(Chi2, Likelihood):
         )
 
     @cached_property
-    def logdetCinv(self) -> float:
+    def logdetCinv(self) -> float | None:
         if np.all(self.data["data_variance"] == 0):
             return 0.0
 
-        Cinv = self.Q
-        return np.log(np.linalg.det(Cinv))
+        try:
+            Cinv = self.Q
+            return np.log(np.linalg.det(Cinv))
+        except AttributeError:
+            return None
 
     @cached_property
     def sigma_plus_v_inverse(self):
@@ -234,13 +246,15 @@ class PartialLinearModel(Chi2, Likelihood):
     def fiducial_lnl(self):
         return attr.evolve(self, subtract_fiducial=False, verbose=False)()[0]
 
+    @profile
     def logdet_cinv(self, model, ctx, **params) -> float:
         """A derived quantity, the log-determinant of the inverse of C."""
-        fit = model[0]
-        try:
+        if self.logdetCinv is None:
+            fit = model[0]
+            h = fit.hessian
+            return np.log(np.linalg.det(h))
+        else:
             return self.logdetCinv
-        except AttributeError:
-            return np.log(np.linalg.det(fit.hessian))
 
     def logdet_sig(self, model, ctx, **params):
         """A derived quantity, the log-determinant of the covariance matrix."""
@@ -267,8 +281,9 @@ class PartialLinearModel(Chi2, Likelihood):
         resid = fit.residual[mask]
         var = var[mask]
 
-        return np.nansum(resid ** 2 / var)
+        return np.nansum(resid**2 / var)
 
+    @profile
     def lnl(self, model, **params):
         # Ensure we don't use flagged channels
         logdetSig = self.logdet_sig(model, None, **params)
@@ -290,6 +305,30 @@ class PartialLinearModel(Chi2, Likelihood):
             logger.warn(f"Got bad log-likelihood: {lnl} for params: {params}")
 
         return lnl
+
+    def get_unmarginalized_lnl(self, linear_params, nonlinear_params):
+        ctx = self.get_ctx(params=nonlinear_params)
+
+        if self.variance_func is None:
+            var = self.data["data_variance"]
+        else:
+            var = self.variance_func(ctx, self.data)
+
+        if self.data_func is None:
+            data = self.data["data"]
+        else:
+            data = self.data_func(ctx, self.data)
+
+        if self.basis_func is None:
+            linear_model = self.linear_model
+        else:
+            linear_model = self.basis_func(self.linear_model, ctx, self.data)
+
+        linear = linear_model(parameters=linear_params)
+
+        resid = data - linear
+        nm = stats.norm(loc=0, scale=np.sqrt(var))
+        return np.sum(nm.logpdf(resid))
 
     def _extracted_from_lnl_45(self, basis, var):
         A = basis
@@ -377,6 +416,46 @@ class TNS(Component):
 
 
 @attr.s(frozen=True, kw_only=True)
+class S11Systematic(Component):
+    freq: np.ndarray = attr.ib()
+    measured: np.ndarray = attr.ib()
+
+    base_parameters = [
+        Parameter("scale", fiducial=1, min=0, latex=r"A_{\Gamma}"),
+        Parameter("offset", fiducial=0, latex=r"\Delta \Gamma"),
+        Parameter("delay", fiducial=0, latex="\tau_\\Gamma"),
+    ]
+
+    @cached_property
+    def provides(self):
+        return {f"{self.name}_gamma"}
+
+    def calculate(self, ctx, **params):
+        return (self.measured * params["scale"] + params["offset"]) * np.exp(
+            -1j * params["delay"] * self.freq
+        )
+
+
+@attr.s(frozen=True, kw_only=True)
+class NoiseWaveCoefficients(Component):
+    # Requires two sub-components: a source s11 and an LNA s11
+    source_names = attr.ib()
+
+    @cached_property
+    def provides(self):
+        return {"K"}
+
+    @profile
+    def calculate(self, ctx, **params):
+        return np.hstack(
+            tuple(
+                rcf.get_K(gamma_rec=ctx["rcv_gamma"], gamma_ant=ctx[f"{src}_gamma"])
+                for src in self.source_names
+            )
+        )
+
+
+@attr.s(frozen=True, kw_only=True)
 class NoiseWaveLikelihood:
     nw_model: NoiseWaves = attr.ib()
     data: dict = attr.ib()
@@ -384,6 +463,7 @@ class NoiseWaveLikelihood:
     t_ns_params: ParamVec = attr.ib()
     t_ns_freq_range: tuple[float, float] = attr.ib()
     derived: tuple[str] = attr.ib()
+    s11_systematics: Sequence[S11Systematic] = attr.ib(())
 
     @t_ns_freq_range.default
     def _tns_fr_default(self):
@@ -399,8 +479,12 @@ class NoiseWaveLikelihood:
 
     @cached_property
     def t_ns_model(self):
+        if hasattr(self.nw_model.freq, "unit"):
+            f = self.nw_model.freq.to_value("MHz")
+        else:
+            f = self.nw_model.freq
         return TNS(
-            x=self.nw_model.freq.to_value("MHz"),
+            x=f,
             c_terms=self.nw_model.c_terms,
             params=self.t_ns_params.get_params(),
             fiducial=list(self.t_ns_params.fiducial),
@@ -412,39 +496,108 @@ class NoiseWaveLikelihood:
         return PartialLinearModel(
             linear_model=self.nw_model.linear_model,
             data=self.data,
-            components=(self.t_ns_model,),
+            components=(self.t_ns_model,) + self.s11_systematics,
             data_func=self.transform_data,
             variance_func=self.transform_variance if self.sig_by_tns else None,
             derived=tuple(
                 d if hasattr(PartialLinearModel, d) else getattr(self, d)
                 for d in self.derived
             ),
+            basis_func=self.apply_s11_systematics if self.s11_systematics else None,
         )
 
     @classmethod
     def transform_data(cls, ctx: dict, data: dict):
         n = len(data["q"]) // len(ctx["tns"])
         tns = np.concatenate((ctx["tns"],) * n)
-        return data["q"] * tns - data["k0"] * data["T"]
+        k0 = ctx["K"][0] if "K" in ctx else data["k0"]
+        return data["q"] * tns - k0 * data["T"]
 
     @classmethod
     def transform_variance(cls, ctx: dict, data: dict):
         n = len(data["q"]) // len(ctx["tns"])
         tns = np.concatenate((ctx["tns"],) * n)
-        return data["data_variance"] * tns ** 2
+        return data["data_variance"] * tns**2
 
     @classmethod
-    def from_calobs(cls, calobs, sig_by_sigq=True, sources=None, as_sim=None, **kwargs):
-        if sources is None:
-            sources = tuple(calobs._loads.keys())
+    @profile
+    def apply_s11_systematics(cls, linear_model, ctx, data):
+        K = ctx["K"]
 
+        extra_basis = {"tunc": K[1], "tcos": K[2], "tsin": K[3]}
+        m = linear_model.model
+        repeater = (m.tunc.n_terms, m.tcos.n_terms, m.tsin.n_terms)
+        if "tload" in m.extra_basis:
+            extra_basis["tload"] = m.extra_basis["tload"]
+            repeater = repeater + (m.tload.n_terms,)
+
+        # We do the following (updating the basis functions manually) for speed
+        # If we don't pass "init_basis" explicitly, the whole basis function has to
+        # be recomputed, whereas if we just multiply the new/old K, we get a decent
+        # speedup.
+        K = np.vstack((K[1:], np.atleast_2d(m.extra_basis["tload"])))
+        new_extra_basis = np.repeat(K, repeater, axis=0)
+
+        return attr.evolve(
+            linear_model,
+            init_basis=data["raw_basis"] * new_extra_basis,
+            model=attr.evolve(linear_model.model, extra_basis=extra_basis),
+        )
+
+    @classmethod
+    def from_calobs(
+        cls,
+        calobs,
+        sig_by_sigq=True,
+        sources=None,
+        as_sim=None,
+        reweight_sources: bool = False,
+        reweight_frequencies: bool = False,
+        s11_systematic_params=None,
+        cable_noise_factor=1,
+        source_factors=(1, 1, 1, 1),
+        **kwargs,
+    ):
+        if sources is None:
+            sources = tuple(calobs.loads.keys())
+
+        s11_systematic_params = s11_systematic_params or {}
         as_sim = as_sim or []
 
-        loads = {src: load for src, load in calobs._loads.items() if src in sources}
+        loads = {src: load for src, load in calobs.loads.items() if src in sources}
 
         nw_model = NoiseWaves.from_calobs(calobs, sources=sources)
 
-        ks = calobs.get_K(nw_model.freq)
+        raw_bases = nw_model.get_linear_model(with_K=False).basis
+
+        freq = calobs.freq.freq.to_value("MHz")
+        if s11_systematic_params:
+            lna = S11Systematic(
+                freq=freq,
+                measured=calobs.receiver.s11_model(freq),
+                params=s11_systematic_params.get("rcv", {}),
+                name="rcv",
+            )
+
+            s11_systematics = tuple(
+                S11Systematic(
+                    freq=freq,
+                    measured=calobs.loads[src].reflections.s11_model(freq),
+                    params=s11_systematic_params.get(src, {}),
+                    name=src,
+                )
+                for src in sources
+            )
+
+            noise_wave_coeffs = (
+                NoiseWaveCoefficients(
+                    source_names=sources, components=s11_systematics + (lna,)
+                ),
+            )
+        else:
+            noise_wave_coeffs = ()
+
+        ks = calobs.get_K(nw_model.freq * u.MHz)
         k0 = np.concatenate(tuple(ks[src][0] for src in sources))
 
         data = {
@@ -462,25 +615,67 @@ class NoiseWaveLikelihood:
                 )
             ),
             "T": np.concatenate(
-                tuple(
-                    load.temp_ave * np.ones_like(calobs.freq.freq)
-                    for load in loads.values()
-                )
+                tuple(load.temp_ave * np.ones(calobs.freq.n) for load in loads.values())
             ),
             "k0": k0,
+            "gamma_src": {
+                name: source.s11_model(freq) for name, source in loads.items()
+            },
+            "gamma_rcv": calobs.receiver.s11_model(freq),
+            "raw_basis": raw_bases,
         }
 
+        overall_mean = np.mean(
+            [np.mean(load.spectrum.variance_Q) for load in loads.values()]
+        )
+
         if sig_by_sigq:
+            if reweight_sources:
+                data["data_variance"] = np.concatenate(
+                    tuple(
+                        overall_mean
+                        * load.spectrum.variance_Q
+                        / np.mean(load.spectrum.variance_Q)
+                        for load in loads.values()
+                    )
+                )
+            elif reweight_frequencies:
+                data["data_variance"] = np.concatenate(
+                    tuple(
+                        np.mean(load.spectrum.variance_Q)
+                        * np.ones_like(load.spectrum.variance_Q)
+                        for load in loads.values()
+                    )
+                )
+            else:
+                data["data_variance"] = np.concatenate(
+                    tuple(
+                        load.spectrum.variance_Q / load.spectrum.n_integrations
+                        for load in loads.values()
+                    )
+                )
+        else:
             data["data_variance"] = np.concatenate(
                 tuple(
-                    load.spectrum.variance_Q / load.spectrum.n_integrations
+                    overall_mean * np.ones_like(load.spectrum.variance_Q)
                     for load in loads.values()
                 )
             )
-        else:
-            data["data_variance"] = 1.0
 
-        return cls(nw_model=nw_model, data=data, **kwargs)
+        noise_factor = np.concatenate(
+            tuple(
+                np.ones_like(load.spectrum.averaged_Q)
+                * (cable_noise_factor if name in ["open", "short"] else 1)
+                * source_factors[i]
+                for i, (name, load) in enumerate(loads.items())
+            )
+        )
+
+        data["data_variance"] *= noise_factor / np.mean(noise_factor)
+
+        return cls(
+            nw_model=nw_model, data=data, s11_systematics=noise_wave_coeffs, **kwargs
+        )
 
     @classmethod
     def from_sim_calobs(
@@ -503,21 +698,21 @@ class NoiseWaveLikelihood:
         data).
         """
         if sources is None:
-            sources = tuple(calobs._loads.keys())
+            sources = tuple(calobs.loads.keys())
 
-        loads = {src: load for src, load in calobs._loads.items() if src in sources}
+        loads = {src: load for src, load in calobs.loads.items() if src in sources}
 
         nw_model = NoiseWaves.from_calobs(
             calobs, cterms=cterms, wterms=wterms, sources=sources
         )
         ks = calobs.get_K(nw_model.freq)
-        k0 = np.concatenate(tuple(ks[src][0] for src in calobs._loads))
+        k0 = np.concatenate(tuple(ks[src][0] for src in calobs.loads))
         freq = nw_model.freq
 
         if seed:
             np.random.seed(seed)
 
-        temp_ave = {load: calobs._loads[load].temp_ave for load in loads}
+        temp_ave = {load: calobs.loads[load].temp_ave for load in loads}
         data = {
             "q": {
                 name: (
@@ -528,7 +723,7 @@ class NoiseWaveLikelihood:
                 for name in sources
             },
             "T": np.concatenate(
-                tuple(t * np.ones_like(freq) for t in temp_ave.values())
+                tuple(t * np.ones(len(freq)) for t in temp_ave.values())
             ),
             "k0": k0,
         }
@@ -539,9 +734,9 @@ class NoiseWaveLikelihood:
             if variance == "data" or name in as_data:
                 qvar[name] = load.spectrum.variance_Q / load.spectrum.n_integrations
             elif isinstance(variance, dict):
-                qvar[name] = variance[name] * np.ones_like(freq)
+                qvar[name] = variance[name] * np.ones(len(freq))
             else:
-                qvar[name] = variance * np.ones_like(freq)
+                qvar[name] = variance * np.ones(len(freq))
 
         data["q"] = np.concatenate(
             tuple(
@@ -595,7 +790,13 @@ class NoiseWaveLikelihood:
             name: model.get_model(name, x=freq, parameters=linear_params)
             for name in model.models
         }
-        out["tns"] = self.t_ns_model.model.model(x=freq, parameters=params)
+
+        pp = []
+        for i, p in enumerate(self.partial_linear_model.child_active_params):
+            if p.name.startswith("t_lns"):
+                pp.append(params[i])
+
+        out["tns"] = self.t_ns_model.model.model(x=freq, parameters=pp)
         out["params"] = linear_params
         return out
 
@@ -607,24 +808,47 @@ class NoiseWaveLikelihood:
         ctx=None,
         fit=None,
         linear_params=None,
+        load=None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Get the linear coefficients that convert uncalibrated to calibrated temp.
 
         The equation is T_cal = a*T_uncal + b
         """
-        tns = self.t_ns_model.model.model(x=freq, parameters=params)
+        pp = []
+        for i, p in enumerate(self.partial_linear_model.child_active_params):
+            if p.name.startswith("t_lns"):
+                pp.append(params[i])
+        tns = self.t_ns_model.model.model(x=freq, parameters=pp)
 
         model = self.nw_model.linear_model.model
         if linear_params is not None:
             params = linear_params
         else:
+            ctx = self.partial_linear_model.get_ctx(params=params)
             if fit is None:
-                fit = self.partial_linear_model.reduce_model(params=params)[0]
+                fit = self.partial_linear_model.reduce_model(ctx=ctx)[0]
             params = fit.model_parameters
 
+        if load is None:
+            gamma_ant = labcal.antenna_s11_model(freq)
+        elif load.load_name + "_gamma" in ctx:
+            gamma_ant = ctx[load.load_name + "_gamma"]
+        else:
+            gamma_ant = load.reflections.s11_model(freq)
+
+        if "rcv_gamma" in ctx:
+            rcv = ctx["rcv_gamma"]
+
+            if len(freq) != len(rcv):
+                re = spline(self.nw_model.freq, np.real(rcv))(freq)
+                im = spline(self.nw_model.freq, np.imag(rcv))(freq)
+                rcv = re + 1j * im
+        else:
+            rcv = labcal.calobs.receiver_s11(freq * u.MHz)
+
         return rcf.get_linear_coefficients(
-            gamma_ant=labcal.antenna_s11_model(freq),
-            gamma_rec=labcal.calobs.lna.s11_model(freq),
+            gamma_ant=gamma_ant,
+            gamma_rec=rcv,
             sca=tns / labcal.calobs.t_load_ns,
             off=labcal.calobs.t_load
             - model.get_model("tload", x=freq, parameters=params),
@@ -671,6 +895,21 @@ class NoiseWaveLikelihood:
             n += len(d)
 
         return rms_parts
+
+    def lnl_at_calobs(self, calobs: CalibrationObservation):
+        """Compute the (unmarginalized) likelihood at the same parameters as a calobs."""
+        p = np.concatenate(
+            (
+                calobs.Tunc_poly.coeffs[::-1],
+                calobs.Tcos_poly.coeffs[::-1],
+                calobs.Tsin_poly.coeffs[::-1],
+                calobs.t_load - calobs.C2_poly.coeffs[::-1],
+            )
+        )
+
+        nl = calobs.C1_poly.coeffs[::-1] * calobs.t_load_ns
+
+        return self.partial_linear_model.get_unmarginalized_lnl(p, nl)
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -942,9 +1181,6 @@ class DataCalibrationLikelihood:
     def transform_variance(self, ctx: dict, data: dict):
         tns = ctx["tns"]
         field_tns = ctx["tns_field"]
-        print("ftns: ", field_tns)
-        print("tns:", tns)
-        print("dv: ", data["data_variance"][self.src_names[0]])
 
         return np.concatenate(
             [
