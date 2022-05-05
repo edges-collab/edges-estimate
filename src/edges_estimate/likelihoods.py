@@ -555,7 +555,8 @@ class NoiseWaveLikelihood:
         reweight_frequencies: bool = False,
         s11_systematic_params=None,
         cable_noise_factor=1,
-        source_factors=(1, 1, 1, 1),
+        source_factors=None,
+        include_antsim: bool = False,
         **kwargs,
     ):
         if sources is None:
@@ -565,8 +566,17 @@ class NoiseWaveLikelihood:
         as_sim = as_sim or []
 
         loads = {src: load for src, load in calobs.loads.items() if src in sources}
+        if include_antsim:
+            for name in calobs.metadata["io"].s11.simulators:
+                loads[name] = calobs.new_load(name, io_obj=calobs.metadata["io"])
 
-        nw_model = NoiseWaves.from_calobs(calobs, sources=sources)
+        sources = tuple(loads.keys())
+
+        # Source Factors define how much "extra" weight to place on each source.
+        if source_factors is None:
+            source_factors = (1,) * len(loads)
+
+        nw_model = NoiseWaves.from_calobs(calobs, loads=loads)
 
         raw_bases = nw_model.get_linear_model(with_k=False).basis
 
@@ -582,11 +592,11 @@ class NoiseWaveLikelihood:
             s11_systematics = tuple(
                 S11Systematic(
                     freq=freq,
-                    measured=calobs.loads[src].reflections.s11_model(freq),
+                    measured=load.reflections.s11_model(freq),
                     params=s11_systematic_params.get(src, {}),
                     name=src,
                 )
-                for src in sources
+                for src, load in loads.items()
             )
 
             noise_wave_coeffs = (
@@ -598,7 +608,7 @@ class NoiseWaveLikelihood:
             noise_wave_coeffs = ()
 
         ks = calobs.get_K(nw_model.freq * u.MHz)
-        k0 = np.concatenate(tuple(ks[src][0] for src in sources))
+        k0 = np.concatenate(tuple(ks[src][0] for src in loads))
 
         data = {
             "q": np.concatenate(
