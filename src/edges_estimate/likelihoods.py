@@ -440,6 +440,7 @@ class S11Systematic(Component):
 class NoiseWaveCoefficients(Component):
     # Requires two sub-components: a source s11 and an LNA s11
     source_names = attr.ib()
+    as_dict = attr.ib(False)
 
     @cached_property
     def provides(self):
@@ -447,12 +448,20 @@ class NoiseWaveCoefficients(Component):
 
     @profile
     def calculate(self, ctx, **params):
-        return np.hstack(
-            tuple(
-                rcf.get_K(gamma_rec=ctx["rcv_gamma"], gamma_ant=ctx[f"{src}_gamma"])
-                for src in self.source_names
+        if not self.as_dict:
+            return np.hstack(
+                tuple(
+                    rcf.get_K(gamma_rec=ctx["rcv_gamma"], gamma_ant=ctx[f"{src}_gamma"])
+                    for src in self.source_names
+                )
             )
-        )
+        else:
+            return {
+                src: rcf.get_K(
+                    gamma_rec=ctx["rcv_gamma"], gamma_ant=ctx[f"{src}_gamma"]
+                )
+                for src in self.source_names
+            }
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -959,75 +968,80 @@ class NoiseWavesPlusFG:
         return list(self.gamma_src.keys())
 
     @cached_property
-    def linear_model(self) -> CompositeModel:
+    def linear_model(self):
+        return self.get_linear_model()
+
+    def get_linear_model(self, with_k: bool = True) -> CompositeModel:
         """The actual composite linear model object associated with the noise waves."""
         # K should be a an array of shape (Nsrc Nnu x Nnoisewaveterms)
-        K = np.hstack(
-            tuple(
-                rcf.get_K(
-                    gamma_rec=self.gamma_rec(self._freq(name)),
-                    gamma_ant=self.gamma_src[name](self._freq(name)),
+        if with_k:
+            K = np.hstack(
+                tuple(
+                    rcf.get_K(
+                        gamma_rec=self.gamma_rec(self._freq(name)),
+                        gamma_ant=self.gamma_src[name](self._freq(name)),
+                    )
+                    for name in self.src_names
                 )
-                for name in self.src_names
             )
-        )
+            # K[0] multiples the fg, but not the other models.
+            K[0][: len(self.freq) * (len(self.gamma_src) - 1)] = 0.0
+            K[0][-len(self.field_freq) :] *= self.loss / self.bm_corr
 
         x = np.concatenate(
             (np.tile(self.freq, len(self.src_names) - 1), self.field_freq)
         )
 
-        # K[0] multiples the fg, but not the other models.
-        K[0][: len(self.freq) * (len(self.gamma_src) - 1)] = 0.0
-        K[0][-len(self.field_freq) :] *= self.loss / self.bm_corr
-
         transform = UnitTransform(
             range=[self.freq.to_value("MHz").min(), self.freq.to_value("MHz").max()]
         )
 
-        return CompositeModel(
-            models={
-                "tunc": Polynomial(
-                    n_terms=self.w_terms,
-                    parameters=self.parameters[: self.w_terms]
+        models = {
+            "tunc": Polynomial(
+                n_terms=self.w_terms,
+                parameters=self.parameters[: self.w_terms]
+                if self.parameters is not None
+                else None,
+                transform=transform,
+            ),
+            "tcos": Polynomial(
+                n_terms=self.w_terms,
+                parameters=self.parameters[self.w_terms : 2 * self.w_terms]
+                if self.parameters is not None
+                else None,
+                transform=transform,
+            ),
+            "tsin": Polynomial(
+                n_terms=self.w_terms,
+                parameters=self.parameters[2 * self.w_terms : 3 * self.w_terms]
+                if self.parameters is not None
+                else None,
+                transform=transform,
+            ),
+            "tload": Polynomial(
+                n_terms=self.c_terms,
+                parameters=(
+                    self.parameters[3 * self.w_terms : 3 * self.w_terms + self.c_terms]
                     if self.parameters is not None
-                    else None,
-                    transform=transform,
+                    else None
                 ),
-                "tcos": Polynomial(
-                    n_terms=self.w_terms,
-                    parameters=self.parameters[self.w_terms : 2 * self.w_terms]
-                    if self.parameters is not None
-                    else None,
-                    transform=transform,
-                ),
-                "tsin": Polynomial(
-                    n_terms=self.w_terms,
-                    parameters=self.parameters[2 * self.w_terms : 3 * self.w_terms]
-                    if self.parameters is not None
-                    else None,
-                    transform=transform,
-                ),
-                "tload": Polynomial(
-                    n_terms=self.c_terms,
-                    parameters=(
-                        self.parameters[
-                            3 * self.w_terms : 3 * self.w_terms + self.c_terms
-                        ]
-                        if self.parameters is not None
-                        else None
-                    ),
-                    transform=transform,
-                ),
-                "fg": self.fg_model,
-            },
-            extra_basis={
+                transform=transform,
+            ),
+            "fg": self.fg_model,
+        }
+
+        if with_k:
+            extra_basis = {
                 "tunc": K[1],
                 "tcos": K[2],
                 "tsin": K[3],
-                "tload": -1,
+                "tload": -1 * np.ones(len(x)),
                 "fg": K[0],
-            },
-        ).at(x=x)
+            }
+        else:
+            extra_basis = {}
+
+        return CompositeModel(models=models, extra_basis=extra_basis).at(x=x)
 
     def _get_idx(self, src: str):
         if src == "ant":
@@ -1074,34 +1088,40 @@ class NoiseWavesPlusFG:
 
     @classmethod
     def from_labcal(
-        cls, labcal, calobs, fg_model=LinLog(n_terms=5), **kwargs
+        cls,
+        labcal,
+        calobs,
+        fg_model=LinLog(n_terms=5),
+        loads: dict | None = None,
+        **kwargs,
     ) -> NoiseWavesPlusFG:
         """Initialize a noise wave model from a calibration observation."""
         if fg_model.parameters is not None:
-            c2 = (-labcal.calobs._C2.coefficients[::-1]).tolist()
-            c2[0] += labcal.calobs.t_load
+            c2 = (-calobs.C2_poly.coefficients[::-1]).tolist()
+            c2[0] += calobs.t_load
 
             params = (
-                labcal.calobs._Tunc.coefficients[::-1].tolist()
-                + labcal.calobs._Tcos.coefficients[::-1].tolist()
-                + labcal.calobs._Tsin.coefficients[::-1].tolist()
+                calobs.Tunc_poly.coefficients[::-1].tolist()
+                + calobs.Tcos_poly.coefficients[::-1].tolist()
+                + calobs.Tsin_poly.coefficients[::-1].tolist()
                 + c2
                 + list(fg_model.parameters)
             )
         else:
             params = None
 
-        gamma_src = {
-            name: load.reflections.s11_model for name, load in calobs.loads.items()
-        }
+        if loads is None:
+            loads = calobs.loads
+
+        gamma_src = {name: load.reflections.s11_model for name, load in loads.items()}
 
         return cls(
             freq=calobs.freq.freq,
             gamma_src=gamma_src,
-            gamma_rec=labcal.calobs.receiver_s11,
+            gamma_rec=calobs.receiver.s11_model,
             gamma_ant=labcal.antenna_s11_model,
-            c_terms=labcal.calobs.cterms,
-            w_terms=labcal.calobs.wterms,
+            c_terms=calobs.cterms,
+            w_terms=calobs.wterms,
             fg_model=fg_model,
             parameters=params,
             **kwargs,
@@ -1123,6 +1143,7 @@ class DataCalibrationLikelihood:
     save_linear_params: bool = attr.ib(True)
     save_sampled_linear_params: bool = attr.ib(True)
     derived: list[str | Callable] = attr.ib(factory=list)
+    s11_systematics: Sequence[S11Systematic] = attr.ib(())
 
     @eor_components.default
     def _eorcmp(self):
@@ -1168,18 +1189,23 @@ class DataCalibrationLikelihood:
             verbose=self.verbose,
             subtract_fiducial=self.subtract_fiducial,
             derived=derived,
+            basis_func=self.apply_s11_systematics if self.s11_systematics else None,
         )
 
     def transform_data(self, ctx: dict, data: dict):
         tns = ctx["tns"]
         Tant = ctx["eor_spectrum"]
+        if "K" in ctx:
+            k0 = {name: kk[0] for name, kk in ctx["K"].items()}
+        else:
+            k0 = data["k0"]
 
         out = []
         for i, src in enumerate(self.src_names):
             if src == "ant":
                 out.append(
                     ctx["tns_field"] * data["q"]["ant"]
-                    - data["k0"]["ant"]
+                    - k0["ant"]
                     * (
                         Tant * data["loss"] / data["bm_corr"]
                         + (1 - data["loss"]) * data["tamb"]
@@ -1187,7 +1213,7 @@ class DataCalibrationLikelihood:
                 )
             else:
                 Tsrc = data["T"][src]
-                out.append(tns * data["q"][src] - data["k0"][src] * Tsrc)
+                out.append(tns * data["q"][src] - k0[src] * Tsrc)
 
         return np.concatenate(out)
 
@@ -1204,30 +1230,98 @@ class DataCalibrationLikelihood:
         )
 
     @classmethod
+    @profile
+    def apply_s11_systematics(cls, linear_model, ctx, data):
+        K = ctx["K"]
+        m = linear_model.model
+
+        extra_basis = {
+            "tunc": np.concatenate(kk[1] for kk in K.values()),
+            "tcos": np.concatenate(kk[2] for kk in K.values()),
+            "tsin": np.concatenate(kk[3] for kk in K.values()),
+            "tload": m.extra_basis["tload"],
+            "fg": np.concatenate(kk[0] for kk in K.values()),
+        }
+        repeater = (
+            m.tunc.n_terms,
+            m.tcos.n_terms,
+            m.tsin.n_terms,
+            m.tload.n_terms,
+            m.fg.n_terms,
+        )
+
+        # We do the following (updating the basis functions manually) for speed
+        # If we don't pass "init_basis" explicitly, the whole basis function has to
+        # be recomputed, whereas if we just multiply the new/old K, we get a decent
+        # speedup.
+        K = np.vstack(extra_basis.values())
+        new_extra_basis = np.repeat(K, repeater, axis=0)
+
+        return attr.evolve(
+            linear_model,
+            init_basis=data["raw_basis"] * new_extra_basis,
+            model=attr.evolve(linear_model.model, extra_basis=extra_basis),
+        )
+
+    @classmethod
     def from_labcal(
         cls,
         labcal,
         calobs,
         q_ant,
         qvar_ant,
+        loads: dict | None = None,
         loss: float | np.ndarray = 1.0,
         fg_model=LinLog(n_terms=5),
-        sim: bool = False,
-        scale_model: Polynomial = None,
+        as_sim: tuple[str] = (),
         cal_noise="data",
         field_freq: np.ndarray = attr.NOTHING,
         tamb: float = 296.0,
         bm_corr: float | np.ndarray = 1.0,
+        s11_systematic_params=None,
         **kwargs,
     ):
+        if loads is None:
+            loads = calobs.loads
+
         nwfg_model = NoiseWavesPlusFG.from_labcal(
             labcal,
             calobs,
+            loads=loads,
             fg_model=fg_model,
             field_freq=field_freq,
             loss=loss,
             bm_corr=bm_corr,
         )
+
+        freq = calobs.freq.freq.to_value("MHz")
+        if s11_systematic_params:
+            lna = S11Systematic(
+                freq=freq,
+                measured=calobs.receiver.s11_model(freq),
+                params=s11_systematic_params.get("rcv", {}),
+                name="rcv",
+            )
+
+            s11_systematics = tuple(
+                S11Systematic(
+                    freq=freq,
+                    measured=load.reflections.s11_model(freq),
+                    params=s11_systematic_params.get(src, {}),
+                    name=src,
+                )
+                for src, load in loads.items()
+            )
+
+            noise_wave_coeffs = (
+                NoiseWaveCoefficients(
+                    source_names=tuple(loads.keys()),
+                    components=s11_systematics + (lna,),
+                    as_dict=True,
+                ),
+            )
+        else:
+            noise_wave_coeffs = ()
 
         k0 = {
             src: rcf.get_K(
@@ -1237,19 +1331,18 @@ class DataCalibrationLikelihood:
             for src, gamma_src in nwfg_model.gamma_src.items()
         }
 
-        if not sim:
-            q = {name: load.spectrum.averaged_Q for name, load in calobs.loads.items()}
-        else:
-            q = {
-                name: simulate_q_from_calobs(calobs, name, scale_model=scale_model)
-                for name in calobs.load_names
-            }
+        q = {
+            name: simulate_q_from_calobs(calobs, name)
+            if name in as_sim
+            else load.spectrum.averaged_Q
+            for name, load in loads.items()
+        }
 
         q["ant"] = q_ant
 
         T = {
             name: load.temp_ave * np.ones(labcal.calobs.freq.n)
-            for name, load in calobs.loads.items()
+            for name, load in loads.items()
         }
         qvar = {"ant": qvar_ant}
 
@@ -1257,30 +1350,20 @@ class DataCalibrationLikelihood:
             qvar.update(
                 {
                     name: load.spectrum.variance_Q / load.spectrum.n_integrations
-                    for name, load in calobs.loads.items()
+                    for name, load in loads.items()
                 }
             )
         else:
-            qvar.update(
-                {name: cal_noise * np.ones(calobs.freq.n) for name in calobs.loads}
-            )
+            qvar.update({name: cal_noise * np.ones(calobs.freq.n) for name in loads})
 
-        if sim:
-            if isinstance(cal_noise, dict):
-                q = {
-                    name: val + (cal_noise[name] if name != "ant" else 0)
-                    for name, val in q.items()
-                }
-            else:
-                q = {
-                    name: val
-                    + (
-                        np.random.normal(scale=np.sqrt(qvar[name]))
-                        if name != "ant"
-                        else 0
-                    )
-                    for name, val in q.items()
-                }
+        for k in q:
+            if k in as_sim:
+                if isinstance(cal_noise, dict):
+                    q[k] += cal_noise[k]
+                else:
+                    q[k] += np.random.normal(scale=np.sqrt(qvar[k]))
+
+        raw_bases = nwfg_model.get_linear_model(with_k=False).basis
 
         data = {
             "q": q,
@@ -1290,6 +1373,11 @@ class DataCalibrationLikelihood:
             "loss": loss,
             "bm_corr": bm_corr,
             "tamb": tamb,
+            "gamma_src": {
+                name: source.s11_model(freq) for name, source in loads.items()
+            },
+            "gamma_rcv": calobs.receiver.s11_model(freq),
+            "raw_basis": raw_bases,
         }
 
         if not len(nwfg_model.field_freq) == len(q["ant"]) == len(qvar["ant"]):
@@ -1297,7 +1385,12 @@ class DataCalibrationLikelihood:
                 "field_freq, q_ant and qvar_ant must be of the same shape."
             )
 
-        return cls(nwfg_model=nwfg_model, data=data, **kwargs)
+        return cls(
+            nwfg_model=nwfg_model,
+            data=data,
+            s11_systematics=noise_wave_coeffs,
+            **kwargs,
+        )
 
     def get_linear_coefficients(
         self, params=None, ctx=None, fit=None, linear_params=None, src="ant"
