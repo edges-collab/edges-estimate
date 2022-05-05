@@ -607,7 +607,10 @@ class NoiseWaveLikelihood:
         else:
             noise_wave_coeffs = ()
 
-        ks = calobs.get_K(nw_model.freq * u.MHz)
+        ks = {
+            name: load.reflections.get_k_matrix(calobs.receiver, freq=nw_model.freq)
+            for name, load in loads.items()
+        }
         k0 = np.concatenate(tuple(ks[src][0] for src in loads))
 
         data = {
