@@ -419,20 +419,37 @@ class TNS(Component):
 class S11Systematic(Component):
     freq: np.ndarray = attr.ib()
     measured: np.ndarray = attr.ib()
+    _scale_model: Model = attr.ib()
+    _delay_model: Model = attr.ib()
 
-    base_parameters = [
-        Parameter("scale", fiducial=1, min=0, latex=r"A_{\Gamma}"),
-        Parameter("offset", fiducial=0, latex=r"\Delta \Gamma"),
-        Parameter("delay", fiducial=0, latex="\tau_\\Gamma"),
-    ]
+    @cached_property
+    def scale_model(self):
+        return self._scale_model.at(x=self.freq)
+
+    @cached_property
+    def delay_model(self):
+        return self._delay_model.at(x=self.freq)
+
+    @cached_property
+    def base_parameters(self):
+        return tuple(
+            Parameter(f"logscale_{i}", fiducial=0, latex=rf"A^\Gamma_{i}")
+            for i in range(self.scale_model.n_terms)
+        ) + tuple(
+            Parameter(f"delay_{i}", fiducial=0, latex=rf"tau^\Gamma_{i}")
+            for i in range(self.delay_model.n_terms)
+        )
 
     @cached_property
     def provides(self):
         return {f"{self.name}_gamma"}
 
     def calculate(self, ctx, **params):
-        return (self.measured * params["scale"] + params["offset"]) * np.exp(
-            -1j * params["delay"] * self.freq
+        s = [params[f"logscale_{i}"] for i in range(self.scale_model.n_terms)]
+        d = [params[f"delay_{i}"] for i in range(self.delay_model.n_terms)]
+
+        return (self.measured * 10 ** self.scale_model(parameters=s)) * np.exp(
+            -1j * self.delay_model(parameters=d) / 1000 * self.freq
         )
 
 
@@ -451,14 +468,18 @@ class NoiseWaveCoefficients(Component):
         if not self.as_dict:
             return np.hstack(
                 tuple(
-                    rcf.get_K(gamma_rec=ctx["rcv_gamma"], gamma_ant=ctx[f"{src}_gamma"])
+                    rcf.get_K(
+                        gamma_rec=ctx["rcv_gamma" if src != "ant" else "rcvant_gamma"],
+                        gamma_ant=ctx[f"{src}_gamma"],
+                    )
                     for src in self.source_names
                 )
             )
         else:
             return {
                 src: rcf.get_K(
-                    gamma_rec=ctx["rcv_gamma"], gamma_ant=ctx[f"{src}_gamma"]
+                    gamma_rec=ctx["rcv_gamma" if src != "ant" else "rcvant_gamma"],
+                    gamma_ant=ctx[f"{src}_gamma"],
                 )
                 for src in self.source_names
             }
@@ -591,10 +612,19 @@ class NoiseWaveLikelihood:
 
         freq = calobs.freq.freq.to_value("MHz")
         if s11_systematic_params:
+            lna_delay_model = s11_systematic_params.get("rcv", {}).pop(
+                "delay_model", Polynomial(n_terms=1)
+            )
+            lna_scale_model = s11_systematic_params.get("rcv", {}).pop(
+                "scale_model", Polynomial(n_terms=1)
+            )
+
             lna = S11Systematic(
                 freq=freq,
                 measured=calobs.receiver.s11_model(freq),
                 params=s11_systematic_params.get("rcv", {}),
+                delay_model=lna_delay_model,
+                scale_model=lna_scale_model,
                 name="rcv",
             )
 
@@ -603,6 +633,12 @@ class NoiseWaveLikelihood:
                     freq=freq,
                     measured=load.reflections.s11_model(freq),
                     params=s11_systematic_params.get(src, {}),
+                    delay_model=s11_systematic_params.get(src, {}).pop(
+                        "delay_model", Polynomial(n_terms=1)
+                    ),
+                    scale_model=s11_systematic_params.get(src, {}).pop(
+                        "scale_model", Polynomial(n_terms=1)
+                    ),
                     name=src,
                 )
                 for src, load in loads.items()
@@ -989,7 +1025,10 @@ class NoiseWavesPlusFG:
             K[0][-len(self.field_freq) :] *= self.loss / self.bm_corr
 
         x = np.concatenate(
-            (np.tile(self.freq, len(self.src_names) - 1), self.field_freq)
+            (
+                np.tile(self.freq.to_value("MHz"), len(self.src_names) - 1),
+                self.field_freq.to_value("MHz"),
+            )
         )
 
         transform = UnitTransform(
@@ -1170,6 +1209,32 @@ class DataCalibrationLikelihood:
             params=t_ns_params.get_params(),
         )
 
+    # Start derived parameters
+    @staticmethod
+    def tunchat(model, ctx, **params):
+        return model[0].fit.model.tunc.parameters
+
+    @staticmethod
+    def tcoshat(model, ctx, **params):
+        return model[0].fit.model.tcos.parameters
+
+    @staticmethod
+    def tsinhat(model, ctx, **params):
+        return model[0].fit.model.tsin.parameters
+
+    @staticmethod
+    def tloadhat(model, ctx, **params):
+        return model[0].fit.model.tload.parameters
+
+    @staticmethod
+    def tfghat(model, ctx, **params):
+        return model[0].fit.model.fg.parameters
+
+    @staticmethod
+    def linear(model, ctx, **params):
+        fit = model[0]
+        return fit.get_sample()
+
     @cached_property
     def partial_linear_model(self):
         derived = []
@@ -1183,12 +1248,15 @@ class DataCalibrationLikelihood:
         return PartialLinearModel(
             linear_model=self.nwfg_model.linear_model,
             data=self.data,
-            components=(self.t_ns_model,) + self.eor_components,
+            components=(self.t_ns_model,) + self.eor_components + self.s11_systematics,
             data_func=self.transform_data,
             variance_func=self.transform_variance,
             verbose=self.verbose,
             subtract_fiducial=self.subtract_fiducial,
-            derived=derived,
+            derived=tuple(
+                d if hasattr(PartialLinearModel, d) else getattr(self, d)
+                for d in derived
+            ),
             basis_func=self.apply_s11_systematics if self.s11_systematics else None,
         )
 
@@ -1236,11 +1304,11 @@ class DataCalibrationLikelihood:
         m = linear_model.model
 
         extra_basis = {
-            "tunc": np.concatenate(kk[1] for kk in K.values()),
-            "tcos": np.concatenate(kk[2] for kk in K.values()),
-            "tsin": np.concatenate(kk[3] for kk in K.values()),
+            "tunc": np.concatenate([kk[1] for kk in K.values()]),
+            "tcos": np.concatenate([kk[2] for kk in K.values()]),
+            "tsin": np.concatenate([kk[3] for kk in K.values()]),
             "tload": m.extra_basis["tload"],
-            "fg": np.concatenate(kk[0] for kk in K.values()),
+            "fg": np.concatenate([kk[0] for kk in K.values()]),
         }
         repeater = (
             m.tunc.n_terms,
@@ -1302,6 +1370,12 @@ class DataCalibrationLikelihood:
                 params=s11_systematic_params.get("rcv", {}),
                 name="rcv",
             )
+            lna_ant = S11Systematic(
+                freq=field_freq.to_value("MHz"),
+                measured=calobs.receiver.s11_model(field_freq.to_value("MHz")),
+                params=s11_systematic_params.get("rcv", {}),
+                name="rcvant",
+            )
 
             s11_systematics = tuple(
                 S11Systematic(
@@ -1313,10 +1387,17 @@ class DataCalibrationLikelihood:
                 for src, load in loads.items()
             )
 
+            ant_s11 = S11Systematic(
+                freq=field_freq.to_value("MHz"),
+                measured=labcal.antenna_s11_model(field_freq),
+                params=s11_systematic_params.get("ant", {}),
+                name="ant",
+            )
+
             noise_wave_coeffs = (
                 NoiseWaveCoefficients(
-                    source_names=tuple(loads.keys()),
-                    components=s11_systematics + (lna,),
+                    source_names=tuple(loads.keys()) + ("ant",),
+                    components=s11_systematics + (lna, lna_ant, ant_s11),
                     as_dict=True,
                 ),
             )
