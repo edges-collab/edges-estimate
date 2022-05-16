@@ -578,6 +578,8 @@ class NoiseWaveLikelihood:
     def from_calobs(
         cls,
         calobs,
+        cterms=None,
+        wterms=None,
         sig_by_sigq=True,
         sources=None,
         as_sim=None,
@@ -606,7 +608,9 @@ class NoiseWaveLikelihood:
         if source_factors is None:
             source_factors = (1,) * len(loads)
 
-        nw_model = NoiseWaves.from_calobs(calobs, loads=loads)
+        nw_model = NoiseWaves.from_calobs(
+            calobs, loads=loads, cterms=cterms, wterms=wterms
+        )
 
         raw_bases = nw_model.get_linear_model(with_k=False).basis
 
@@ -733,101 +737,6 @@ class NoiseWaveLikelihood:
 
         return cls(
             nw_model=nw_model, data=data, s11_systematics=noise_wave_coeffs, **kwargs
-        )
-
-    @classmethod
-    def from_sim_calobs(
-        cls,
-        calobs,
-        t_ns_width=10,
-        variance="data",
-        cterms=None,
-        wterms=None,
-        seed=None,
-        sources=None,
-        as_data: list[str] | None = None,
-        **kwargs,
-    ):
-        """Generate the likelihood by simulating directly from a calobs.
-
-        Note that cterms and wterms here change the final likelihood model, but the
-        simulation itself is based on the input calobs (i.e. setting cterms and wterms
-        differently will mean that the model doesn't correctly describe the simulated
-        data).
-        """
-        if sources is None:
-            sources = tuple(calobs.loads.keys())
-
-        loads = {src: load for src, load in calobs.loads.items() if src in sources}
-
-        nw_model = NoiseWaves.from_calobs(
-            calobs, cterms=cterms, wterms=wterms, sources=sources
-        )
-        ks = calobs.get_K(nw_model.freq)
-        k0 = np.concatenate(tuple(ks[src][0] for src in calobs.loads))
-        freq = nw_model.freq
-
-        if seed:
-            np.random.seed(seed)
-
-        temp_ave = {load: calobs.loads[load].temp_ave for load in loads}
-        data = {
-            "q": {
-                name: (
-                    loads[name].spectrum.averaged_Q
-                    if name in as_data
-                    else simulate_q_from_calobs(calobs, name)
-                )
-                for name in sources
-            },
-            "T": np.concatenate(
-                tuple(t * np.ones(len(freq)) for t in temp_ave.values())
-            ),
-            "k0": k0,
-        }
-
-        # Now Get The Noise
-        qvar = {}
-        for name, load in loads.items():
-            if variance == "data" or name in as_data:
-                qvar[name] = load.spectrum.variance_Q / load.spectrum.n_integrations
-            elif isinstance(variance, dict):
-                qvar[name] = variance[name] * np.ones(len(freq))
-            else:
-                qvar[name] = variance * np.ones(len(freq))
-
-        data["q"] = np.concatenate(
-            tuple(
-                val + np.random.normal(scale=np.sqrt(qvar[name]))
-                for name, val in data["q"].items()
-            )
-        )
-
-        data["data_variance"] = np.concatenate(tuple(qvar.values()))
-
-        est_tns = calobs.C1_poly.coeffs[::-1] * calobs.t_load_ns
-        if cterms and cterms > calobs.cterms:
-            est_tns = np.concatenate((est_tns, np.zeros(cterms - calobs.cterms)))
-        else:
-            est_tns = est_tns[:cterms]
-
-        middle = est_tns.copy()
-        middle[1:] = 0
-        t_ns_params = ParamVec(
-            "t_lns",
-            length=len(est_tns),
-            min=middle - t_ns_width,
-            max=middle + t_ns_width,
-            fiducial=est_tns,
-            ref=[stats.norm(v, scale=1.0) for v in est_tns],
-        )
-
-        return cls(
-            nw_model=nw_model,
-            data=data,
-            t_ns_params=t_ns_params,
-            t_ns_freq_range=(calobs.freq.min, calobs.freq.max),
-            **kwargs,
         )
 
     def get_cal_curves(
