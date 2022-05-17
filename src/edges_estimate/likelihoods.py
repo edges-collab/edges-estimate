@@ -589,6 +589,8 @@ class NoiseWaveLikelihood:
         cable_noise_factor=1,
         source_factors=None,
         include_antsim: bool = False,
+        seed: int = 1234,
+        add_noise: bool = True,
         **kwargs,
     ):
         if sources is None:
@@ -662,14 +664,22 @@ class NoiseWaveLikelihood:
         }
         k0 = np.concatenate(tuple(ks[src][0] for src in loads))
 
+        if as_sim:
+            np.random.seed(seed)
+
+        print(as_sim, add_noise)
         data = {
             "q": np.concatenate(
                 tuple(
                     simulate_q_from_calobs(calobs, name)
-                    + np.random.normal(
-                        scale=np.sqrt(
-                            load.spectrum.variance_Q / load.spectrum.n_integrations
+                    + (
+                        np.random.normal(
+                            scale=np.sqrt(
+                                load.spectrum.variance_Q / load.spectrum.n_integrations
+                            )
                         )
+                        if add_noise
+                        else 0
                     )
                     if name in as_sim
                     else load.spectrum.averaged_Q
