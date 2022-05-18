@@ -667,7 +667,6 @@ class NoiseWaveLikelihood:
         if as_sim:
             np.random.seed(seed)
 
-        print(as_sim, add_noise)
         data = {
             "q": np.concatenate(
                 tuple(
@@ -1044,6 +1043,32 @@ class NoiseWavesPlusFG:
         fit = self.linear_model.fit(ydata=data, weights=weights)
         return attr.evolve(self, parameters=fit.model_parameters)
 
+    def with_params_from_calobs(self, calobs, cterms=None, wterms=None, fg_terms=None):
+        cterms = cterms or calobs.cterms
+        wterms = wterms or calobs.wterms
+
+        def modify(thing, n):
+            if len(tu) < wterms:
+                return thing + [0] * (n - len(thing))
+            elif len(tu) > wterms:
+                return thing[:n]
+            else:
+                return thing
+
+        tu = modify(calobs.Tunc_poly.coefficients[::-1].tolist(), wterms)
+        tc = modify(calobs.Tcos_poly.coefficients[::-1].tolist(), wterms)
+        ts = modify(calobs.Tsin_poly.coefficients[::-1].tolist(), wterms)
+
+        if self.with_tload:
+            c2 = (-calobs.C2_poly.coefficients[::-1]).tolist()
+            c2[0] += calobs.t_load
+            c2 = modify(c2, cterms)
+
+        if fg_terms is None:
+            fg_terms = [0] * self.fg_model.n_terms
+
+        return attr.evolve(self, parameters=tu + tc + ts + c2 + fg_terms)
+
     @classmethod
     def from_labcal(
         cls,
@@ -1051,39 +1076,30 @@ class NoiseWavesPlusFG:
         calobs,
         fg_model=LinLog(n_terms=5),
         loads: dict | None = None,
+        cterms=None,
+        wterms=None,
         **kwargs,
     ) -> NoiseWavesPlusFG:
         """Initialize a noise wave model from a calibration observation."""
-        if fg_model.parameters is not None:
-            c2 = (-calobs.C2_poly.coefficients[::-1]).tolist()
-            c2[0] += calobs.t_load
-
-            params = (
-                calobs.Tunc_poly.coefficients[::-1].tolist()
-                + calobs.Tcos_poly.coefficients[::-1].tolist()
-                + calobs.Tsin_poly.coefficients[::-1].tolist()
-                + c2
-                + list(fg_model.parameters)
-            )
-        else:
-            params = None
+        cterms = cterms or calobs.cterms
+        wterms = wterms or calobs.wterms
 
         if loads is None:
             loads = calobs.loads
 
         gamma_src = {name: load.reflections.s11_model for name, load in loads.items()}
 
-        return cls(
+        out = cls(
             freq=calobs.freq.freq,
             gamma_src=gamma_src,
             gamma_rec=calobs.receiver.s11_model,
             gamma_ant=labcal.antenna_s11_model,
-            c_terms=calobs.cterms,
-            w_terms=calobs.wterms,
+            c_terms=cterms,
+            w_terms=wterms,
             fg_model=fg_model,
-            parameters=params,
             **kwargs,
         )
+        return out.with_params_from_calobs(calobs, cterms, wterms, fg_model.parameters)
 
     def __call__(self, **kwargs) -> np.ndarray:
         """Call the underlying linear model."""
@@ -1266,6 +1282,8 @@ class DataCalibrationLikelihood:
         tamb: float = 296.0,
         bm_corr: float | np.ndarray = 1.0,
         s11_systematic_params=None,
+        cterms=None,
+        wterms=None,
         **kwargs,
     ):
         if loads is None:
@@ -1279,6 +1297,8 @@ class DataCalibrationLikelihood:
             field_freq=field_freq,
             loss=loss,
             bm_corr=bm_corr,
+            cterms=cterms,
+            wterms=wterms,
         )
 
         freq = calobs.freq.freq.to_value("MHz")
