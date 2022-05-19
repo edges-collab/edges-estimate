@@ -940,7 +940,7 @@ class NoiseWavesPlusFG:
             )
             # K[0] multiples the fg, but not the other models.
             K[0][: len(self.freq) * (len(self.gamma_src) - 1)] = 0.0
-            K[0][-len(self.field_freq) :] *= self.loss / self.bm_corr
+            K[0][-len(self.field_freq) :] *= self.loss * self.bm_corr
 
         x = np.concatenate(
             (
@@ -1048,9 +1048,9 @@ class NoiseWavesPlusFG:
         wterms = wterms or calobs.wterms
 
         def modify(thing, n):
-            if len(tu) < wterms:
+            if len(thing) < wterms:
                 return thing + [0] * (n - len(thing))
-            elif len(tu) > wterms:
+            elif len(thing) > wterms:
                 return thing[:n]
             else:
                 return thing
@@ -1059,15 +1059,14 @@ class NoiseWavesPlusFG:
         tc = modify(calobs.Tcos_poly.coefficients[::-1].tolist(), wterms)
         ts = modify(calobs.Tsin_poly.coefficients[::-1].tolist(), wterms)
 
-        if self.with_tload:
-            c2 = (-calobs.C2_poly.coefficients[::-1]).tolist()
-            c2[0] += calobs.t_load
-            c2 = modify(c2, cterms)
+        c2 = (-calobs.C2_poly.coefficients[::-1]).tolist()
+        c2[0] += calobs.t_load
+        c2 = modify(c2, cterms)
 
         if fg_terms is None:
             fg_terms = [0] * self.fg_model.n_terms
 
-        return attr.evolve(self, parameters=tu + tc + ts + c2 + fg_terms)
+        return attr.evolve(self, parameters=tu + tc + ts + c2 + list(fg_terms))
 
     @classmethod
     def from_labcal(
@@ -1204,15 +1203,12 @@ class DataCalibrationLikelihood:
             k0 = data["k0"]
 
         out = []
-        for i, src in enumerate(self.src_names):
+        for src in self.src_names:
             if src == "ant":
                 out.append(
                     ctx["tns_field"] * data["q"]["ant"]
                     - k0["ant"]
-                    * (
-                        Tant * data["loss"] / data["bm_corr"]
-                        + (1 - data["loss"]) * data["tamb"]
-                    )
+                    * (Tant * data["loss"] * data["bm_corr"] + data["loss_temp"])
                 )
             else:
                 Tsrc = data["T"][src]
@@ -1275,15 +1271,16 @@ class DataCalibrationLikelihood:
         qvar_ant,
         loads: dict | None = None,
         loss: float | np.ndarray = 1.0,
+        loss_temp: float | np.ndarray = 0.0,
         fg_model=LinLog(n_terms=5),
         as_sim: tuple[str] = (),
         cal_noise="data",
         field_freq: np.ndarray = attr.NOTHING,
-        tamb: float = 296.0,
         bm_corr: float | np.ndarray = 1.0,
         s11_systematic_params=None,
         cterms=None,
         wterms=None,
+        add_noise=True,
         **kwargs,
     ):
         if loads is None:
@@ -1376,12 +1373,13 @@ class DataCalibrationLikelihood:
         else:
             qvar.update({name: cal_noise * np.ones(calobs.freq.n) for name in loads})
 
-        for k in q:
-            if k in as_sim:
-                if isinstance(cal_noise, dict):
-                    q[k] += cal_noise[k]
-                else:
-                    q[k] += np.random.normal(scale=np.sqrt(qvar[k]))
+        if add_noise:
+            for k in q:
+                if k in as_sim:
+                    if isinstance(cal_noise, dict):
+                        q[k] += cal_noise[k]
+                    else:
+                        q[k] += np.random.normal(scale=np.sqrt(qvar[k]))
 
         raw_bases = nwfg_model.get_linear_model(with_k=False).basis
 
@@ -1392,7 +1390,7 @@ class DataCalibrationLikelihood:
             "data_variance": qvar,
             "loss": loss,
             "bm_corr": bm_corr,
-            "tamb": tamb,
+            "loss_temp": loss_temp,
             "gamma_src": {
                 name: source.s11_model(freq) for name, source in loads.items()
             },
@@ -1477,14 +1475,8 @@ class DataCalibrationLikelihood:
                 params=params, ctx=ctx, fit=fit, linear_params=linear_params, src="ant"
             )
 
-        return (
-            (
-                a * self.data["q"]["ant"]
-                + b
-                - (1 - self.data["loss"]) * self.data["tamb"]
-            )
-            * self.data["bm_corr"]
-            / self.data["loss"]
+        return (a * self.data["q"]["ant"] + b - self.data["loss_temp"]) / (
+            self.data["bm_corr"] * self.data["loss"]
         )
 
     def recalibrated_source_temp(self, src: str, params=None) -> np.ndarray:
@@ -1546,13 +1538,9 @@ class DataCalibrationLikelihood:
 
             elif labcal is not None and src == "ant":
                 fid_data = (
-                    (
-                        labcal.calibrate_q(self.data["q"]["ant"], freq=freq)
-                        - (1 - self.data["loss"]) * self.data["tamb"]
-                    )
-                    * self.data["bm_corr"]
-                    / self.data["loss"]
-                )
+                    labcal.calibrate_q(self.data["q"]["ant"], freq=freq)
+                    - self.data["loss_temp"]
+                ) / (self.data["bm_corr"] / self.data["loss"])
                 ax[i, 0].plot(freq, fid_data)
                 ax[i, 1].plot(freq, fid_data - recal_temp, label="Recal vs Labcal")
                 if fid_resid is not None:
