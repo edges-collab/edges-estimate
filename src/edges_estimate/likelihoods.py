@@ -1281,6 +1281,7 @@ class DataCalibrationLikelihood:
         cterms=None,
         wterms=None,
         add_noise=True,
+        seed=1234,
         **kwargs,
     ):
         if loads is None:
@@ -1348,6 +1349,7 @@ class DataCalibrationLikelihood:
             for src, gamma_src in nwfg_model.gamma_src.items()
         }
 
+        print(as_sim)
         q = {
             name: simulate_q_from_calobs(calobs, name)
             if name in as_sim
@@ -1374,6 +1376,7 @@ class DataCalibrationLikelihood:
             qvar.update({name: cal_noise * np.ones(calobs.freq.n) for name in loads})
 
         if add_noise:
+            np.random.seed(seed)
             for k in q:
                 if k in as_sim:
                     if isinstance(cal_noise, dict):
