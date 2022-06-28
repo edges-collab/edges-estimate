@@ -259,12 +259,13 @@ class PartialLinearModel(Chi2, Likelihood):
     def logdet_sig(self, model, ctx, **params):
         """A derived quantity, the log-determinant of the covariance matrix."""
         var = model[-1]
-        var = var[~np.isinf(var)]
 
         if not hasattr(var, "__len__"):
             var = var * np.ones(len(model[1]))
         elif np.all(var == 0):
             var = np.ones_like(var)
+
+        var = var[~np.isinf(var)]
 
         return np.sum(np.log(var)) if self.variance_func is not None else 0
 
@@ -492,7 +493,7 @@ class NoiseWaveLikelihood:
     sig_by_tns: bool = attr.ib(default=True)
     t_ns_params: ParamVec = attr.ib()
     t_ns_freq_range: tuple[float, float] = attr.ib()
-    derived: tuple[str] = attr.ib()
+    derived: tuple[str] = attr.ib(factory=tuple)
     s11_systematics: Sequence[S11Systematic] = attr.ib(())
 
     @t_ns_freq_range.default
@@ -597,7 +598,10 @@ class NoiseWaveLikelihood:
             sources = tuple(calobs.loads.keys())
 
         s11_systematic_params = s11_systematic_params or {}
+
         as_sim = as_sim or []
+        if as_sim == "all":
+            as_sim = list(calobs.loads.keys())
 
         loads = {src: load for src, load in calobs.loads.items() if src in sources}
         if include_antsim:

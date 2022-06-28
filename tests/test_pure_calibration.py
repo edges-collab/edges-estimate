@@ -18,14 +18,12 @@ from edges_estimate.likelihoods import NoiseWaveLikelihood
 
 @pytest.fixture(scope="module")
 def fid_lk(calobs):
-    return NoiseWaveLikelihood.from_sim_calobs(calobs, variance="data", seed=1234)
+    return NoiseWaveLikelihood.from_calobs(calobs, seed=1234, as_sim="all")
 
 
 @pytest.fixture(scope="module")
 def larger_lk(calobs):
-    return NoiseWaveLikelihood.from_sim_calobs(
-        calobs, variance="data", cterms=7, seed=1234
-    )
+    return NoiseWaveLikelihood.from_calobs(calobs, as_sim="all", cterms=7, seed=1234)
 
 
 @pytest.fixture(scope="module")
