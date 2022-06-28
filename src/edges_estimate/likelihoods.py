@@ -4,6 +4,7 @@ import attr
 import numpy as np
 from cached_property import cached_property
 from edges_cal import receiver_calibration_func as rcf
+from edges_cal import types as tp
 from edges_cal.modelling import (
     CompositeModel,
     LinLog,
@@ -106,7 +107,7 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
         return np.sqrt(
             (1 / self.weights)
             * (
-                params["alpha_rn"] * model ** 2 / self.radiometer_norm
+                params["alpha_rn"] * model**2 / self.radiometer_norm
                 + params["sigma_wn"] ** 2
             )
         )
@@ -163,7 +164,7 @@ class CalibrationChi2(Likelihood):
             lnl += -np.nansum(
                 np.log(sigma)
                 + (model["Qp"][source] - data[model["data_mask"]]) ** 2
-                / (2 * sigma ** 2)
+                / (2 * sigma**2)
             )
             if np.isnan(lnl):
                 lnl = -np.inf
@@ -415,7 +416,7 @@ class PartialLinearModel(Chi2, Likelihood):
         data[np.isinf(var)] = np.nan
 
         if self.version == "keith":
-            lnl = -0.5 * (logdetSig + logdetCinv + np.nansum(resid ** 2 / var))
+            lnl = -0.5 * (logdetSig + logdetCinv + np.nansum(resid**2 / var))
         elif self.version == "raul":
             A = basis
             B = A.dot(resid / var)
@@ -427,7 +428,7 @@ class PartialLinearModel(Chi2, Likelihood):
                 logdetCinv
                 + logdetSig
                 + B.T.dot(np.linalg.inv(Q).dot(B))
-                + np.sum(resid ** 2 / var)
+                + np.sum(resid**2 / var)
             )
         elif self.version == "raul-full":
             try:
@@ -542,7 +543,7 @@ class NoiseWaveLikelihood:
     @cached_property
     def t_ns_model(self):
         return TNS(
-            x=self.nw_model.freq,
+            x=self.nw_model.freq.to_value("MHz"),
             c_terms=self.nw_model.c_terms,
             params=self.t_ns_params.get_params(),
         )
@@ -566,21 +567,21 @@ class NoiseWaveLikelihood:
     @classmethod
     def transform_variance(cls, ctx: dict, data: dict):
         tns = np.concatenate((ctx["tns"],) * 4)
-        return data["data_variance"] * tns ** 2
+        return data["data_variance"] * tns**2
 
     @classmethod
     def from_calobs(cls, calobs, sig_by_sigq=True, **kwargs):
         nw_model = NoiseWaves.from_calobs(calobs)
-        k0 = np.concatenate(tuple(calobs.get_K()[src][0] for src in calobs._loads))
+        k0 = np.concatenate(tuple(calobs.get_K()[src][0] for src in calobs.loads))
 
         data = {
             "q": np.concatenate(
-                tuple(load.spectrum.averaged_Q for load in calobs._loads.values())
+                tuple(load.spectrum.averaged_Q for load in calobs.loads.values())
             ),
             "T": np.concatenate(
                 tuple(
                     load.temp_ave * np.ones_like(calobs.freq.freq)
-                    for load in calobs._loads.values()
+                    for load in calobs.loads.values()
                 )
             ),
             "k0": k0,
@@ -590,7 +591,7 @@ class NoiseWaveLikelihood:
             data["data_variance"] = np.concatenate(
                 tuple(
                     load.spectrum.variance_Q / load.spectrum.n_integrations
-                    for load in calobs._loads.values()
+                    for load in calobs.loads.values()
                 )
             )
         else:
@@ -658,11 +659,11 @@ class NoiseWaveLikelihood:
 
 @attr.s(frozen=True, kw_only=True)
 class NoiseWavesPlusFG:
-    freq: np.ndarray = attr.ib()
+    freq: tp.FreqType = attr.ib()
     _gamma_src: dict[str, np.ndarray] = attr.ib()
     gamma_ant: np.ndarray = attr.ib()
     gamma_rec: Callable = attr.ib()
-    field_freq: np.ndarray = attr.ib()
+    field_freq: tp.FreqType = attr.ib()
     c_terms: int = attr.ib(default=5)
     w_terms: int = attr.ib(default=6)
     fg_model: Model = attr.ib(default=LinLog(n_terms=5))
@@ -711,6 +712,10 @@ class NoiseWavesPlusFG:
         K[0][: len(self.freq) * (len(self.gamma_src) - 1)] = 0.0
         K[0][-len(self.field_freq) :] *= self.loss / self.bm_corr
 
+        transform = UnitTransform(
+            range=[self.freq.to_value("MHz").min(), self.freq.to_value("MHz").max()]
+        )
+
         return CompositeModel(
             models={
                 "tunc": Polynomial(
@@ -718,21 +723,21 @@ class NoiseWavesPlusFG:
                     parameters=self.parameters[: self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "tcos": Polynomial(
                     n_terms=self.w_terms,
                     parameters=self.parameters[self.w_terms : 2 * self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "tsin": Polynomial(
                     n_terms=self.w_terms,
                     parameters=self.parameters[2 * self.w_terms : 3 * self.w_terms]
                     if self.parameters is not None
                     else None,
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "tload": Polynomial(
                     n_terms=self.c_terms,
@@ -743,7 +748,7 @@ class NoiseWavesPlusFG:
                         if self.parameters is not None
                         else None
                     ),
-                    transform=UnitTransform(range=[self.freq.min(), self.freq.max()]),
+                    transform=transform,
                 ),
                 "fg": self.fg_model,
             },
@@ -801,32 +806,31 @@ class NoiseWavesPlusFG:
 
     @classmethod
     def from_labcal(
-        cls, labcal, fg_model=LinLog(n_terms=5), **kwargs
+        cls, labcal, calobs, fg_model=LinLog(n_terms=5), **kwargs
     ) -> NoiseWavesPlusFG:
         """Initialize a noise wave model from a calibration observation."""
         if fg_model.parameters is not None:
-            c2 = (-labcal.calobs.C2_poly.coefficients[::-1]).tolist()
+            c2 = (-labcal.calobs._C2.coefficients[::-1]).tolist()
             c2[0] += labcal.calobs.t_load
 
             params = (
-                labcal.calobs.Tunc_poly.coefficients[::-1].tolist()
-                + labcal.calobs.Tcos_poly.coefficients[::-1].tolist()
-                + labcal.calobs.Tsin_poly.coefficients[::-1].tolist()
+                labcal.calobs._Tunc.coefficients[::-1].tolist()
+                + labcal.calobs._Tcos.coefficients[::-1].tolist()
+                + labcal.calobs._Tsin.coefficients[::-1].tolist()
                 + c2
-                + fg_model.parameters.tolist()
+                + list(fg_model.parameters)
             )
         else:
             params = None
 
         gamma_src = {
-            name: load.reflections.s11_model
-            for name, load in labcal.calobs._loads.items()
+            name: load.reflections.s11_model for name, load in calobs.loads.items()
         }
 
         return cls(
-            freq=labcal.calobs.freq.freq,
+            freq=calobs.freq.freq,
             gamma_src=gamma_src,
-            gamma_rec=labcal.lna_s11,
+            gamma_rec=labcal.calobs.receiver_s11,
             gamma_ant=labcal.antenna_s11_model,
             c_terms=labcal.calobs.cterms,
             w_terms=labcal.calobs.wterms,
@@ -871,7 +875,7 @@ class DataCalibrationLikelihood:
         else:
             t_ns_params = self.t_ns_params
         return TNS(
-            x=self.nwfg_model.freq,
+            x=self.nwfg_model.freq.to_value("MHz"),
             field_freq=self.nwfg_model.field_freq,
             c_terms=self.nwfg_model.c_terms,
             params=t_ns_params.get_params(),
@@ -923,10 +927,14 @@ class DataCalibrationLikelihood:
     def transform_variance(self, ctx: dict, data: dict):
         tns = ctx["tns"]
         field_tns = ctx["tns_field"]
+        print("ftns: ", field_tns)
+        print("tns:", tns)
+        print("dv: ", data["data_variance"][self.src_names[0]])
+
         return np.concatenate(
             [
                 data["data_variance"][src]
-                * (field_tns ** 2 if src == "ant" else tns ** 2)
+                * (field_tns**2 if src == "ant" else tns**2)
                 for src in self.src_names
             ]
         )
@@ -935,6 +943,7 @@ class DataCalibrationLikelihood:
     def from_labcal(
         cls,
         labcal,
+        calobs,
         q_ant,
         qvar_ant,
         loss: float | np.ndarray = 1.0,
@@ -948,7 +957,12 @@ class DataCalibrationLikelihood:
         **kwargs,
     ):
         nwfg_model = NoiseWavesPlusFG.from_labcal(
-            labcal, fg_model=fg_model, field_freq=field_freq, loss=loss, bm_corr=bm_corr
+            labcal,
+            calobs,
+            fg_model=fg_model,
+            field_freq=field_freq,
+            loss=loss,
+            bm_corr=bm_corr,
         )
 
         k0 = {
@@ -960,23 +974,18 @@ class DataCalibrationLikelihood:
         }
 
         if not sim:
-            q = {
-                name: load.spectrum.averaged_Q
-                for name, load in labcal.calobs._loads.items()
-            }
+            q = {name: load.spectrum.averaged_Q for name, load in calobs.loads.items()}
         else:
             q = {
-                name: simulate_q_from_calobs(
-                    labcal.calobs, name, scale_model=scale_model
-                )
-                for name in labcal.calobs.load_names
+                name: simulate_q_from_calobs(calobs, name, scale_model=scale_model)
+                for name in calobs.load_names
             }
 
         q["ant"] = q_ant
 
         T = {
             name: load.temp_ave * np.ones(labcal.calobs.freq.n)
-            for name, load in labcal.calobs._loads.items()
+            for name, load in calobs.loads.items()
         }
         qvar = {"ant": qvar_ant}
 
@@ -984,15 +993,12 @@ class DataCalibrationLikelihood:
             qvar.update(
                 {
                     name: load.spectrum.variance_Q / load.spectrum.n_integrations
-                    for name, load in labcal.calobs._loads.items()
+                    for name, load in calobs.loads.items()
                 }
             )
         else:
             qvar.update(
-                {
-                    name: cal_noise * np.ones_like(labcal.calobs.freq.freq)
-                    for name in labcal.calobs._loads
-                }
+                {name: cal_noise * np.ones(calobs.freq.n) for name in calobs.loads}
             )
 
         if sim:

@@ -54,7 +54,7 @@ class _PhysicalBase(Foreground):
         b = [p[f"b{i}"] for i in range(4)]
         alpha = p["ion_spec_index"]
 
-        x = np.exp(-b[3] * self.f ** alpha)
+        x = np.exp(-b[3] * self.f**alpha)
         return b[0] * self.f ** (b[1] + b[2] * np.log(self.f) - 2.5) * x, x
 
 
@@ -84,7 +84,7 @@ class PhysicalSmallIonDepth(_PhysicalBase):
     def model(self, **p):
         first_term, x = super().model(p)
         b4 = p["b4"]
-        return first_term + b4 / self.f ** 2
+        return first_term + b4 / self.f**2
 
     # Possible derived quantities
     def Te(self, ctx, **params):
@@ -98,16 +98,16 @@ class PhysicalLin(Foreground):
     """
 
     base_parameters = [Parameter("p0", fiducial=1750, latex=r"p_0")] + [
-        Parameter(f"p{i}", fiducial=0, latex=fr"p_{i}") for i in range(1, 5)
+        Parameter(f"p{i}", fiducial=0, latex=rf"p_{i}") for i in range(1, 5)
     ]
 
     def model(self, **p):
         p = [p[f"p{i}"] for i in range(5)]
 
         return (
-            self.f ** -2.5 * (p[0] + np.log(self.f) * (p[1] + p[2] * np.log(self.f)))
-            + p[3] * self.f ** -4.5
-            + p[4] * self.f ** -2
+            self.f**-2.5 * (p[0] + np.log(self.f) * (p[1] + p[2] * np.log(self.f)))
+            + p[3] * self.f**-4.5
+            + p[4] * self.f**-2
         )
 
     # Possible derived parameters
@@ -143,7 +143,7 @@ class IonContrib(Foreground):
     ]
 
     def model(self, **p):
-        return p["absorption"] * self.f ** -4.5 + p["emissivity"] * self.f ** -2
+        return p["absorption"] * self.f**-4.5 + p["emissivity"] * self.f**-2
 
 
 @attr.s
@@ -188,7 +188,7 @@ class LinLog(Foreground):
 
         # First create the parameters.
         for i in range(2, self.poly_order):
-            p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
+            p.append(Parameter(f"p{i}", 0, latex=rf"p_{i}"))
         return tuple(p)
 
     @cached_property
@@ -197,7 +197,7 @@ class LinLog(Foreground):
 
     @cached_property
     def basis(self):
-        return np.array([self.logf ** i for i in range(self.poly_order)])
+        return np.array([self.logf**i for i in range(self.poly_order)])
 
     def model(self, **p):
         pp = [p[f"p{i}"] for i in range(self.poly_order)]
@@ -218,6 +218,22 @@ class Sinusoid(Foreground):
 
     def model(self, **p):
         return p["amp"] * np.sin(2 * np.pi * self.freqs / p["lambda"] + p["phase"])
+
+
+@attr.s
+class DampedOscillations(Foreground):
+    base_parameters = [
+        Parameter("amp_sin", 10e-10, min=-10, max=1000, latex=r"A_{\rm sin}"),
+        Parameter("amp_cos", 10e-10, min=-10, max=1000, latex=r"A_{\rm cos}"),
+        Parameter("P", 10, min=1, max=np.inf, latex=r"P_{\rm MHz}"),
+        Parameter("b", 0, min=-10, max=10, latex=r"b"),
+    ]
+
+    def model(self, **p):
+        phase = 2 * np.pi * self.freqs / p["P"]
+        return (self.f) ** p["b"] * (
+            p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase)
+        )
 
 
 @attr.s
@@ -254,7 +270,7 @@ class LinPoly(LinLog):
             if key == "beta":
                 continue
             i = int(key[1:])
-            terms.append(val * self.f ** i)
+            terms.append(val * self.f**i)
 
         return np.sum(terms, axis=0) * self.f ** p["beta"]
 
@@ -277,7 +293,7 @@ class Bias(Component):
 
         # First create the parameters.
         for i in range(1, self.poly_order):
-            p.append(Parameter(f"b{i}", 0, latex=fr"b_{i}"))
+            p.append(Parameter(f"b{i}", 0, latex=rf"b_{i}"))
         return tuple(p)
 
     def evaluate_poly(self, **params):
@@ -288,7 +304,7 @@ class Bias(Component):
         res = 0
         for i in range(self.poly_order):
             p = params[f"b{i}"]
-            res += p * x ** i
+            res += p * x**i
 
         return res
 
@@ -302,3 +318,44 @@ class Bias(Component):
                     break  # only add to one thing, otherwise it's doubling up.
                 else:
                     ctx[key] *= bias
+
+
+@attr.s
+class LogPoly(Foreground):
+    """
+    LogPoly model from Sims et.al. 2020 (Equation 18)
+    T_{Fg} = 10^sum(d_i*log10(ν/ν_0)^i)_{i=0 to N}
+    Parameters
+    ----------
+    poly_order : int
+        The maximum polynomial order will be `poly_order `. There are `poly_order+1`
+        total parameters.
+    """
+
+    poly_order = attr.ib(5, converter=int, kw_only=True)
+
+    @cached_property
+    def base_parameters(self):
+        p = [
+            Parameter("p0", 2, latex=r"p_0"),
+        ]
+        assert self.poly_order >= 1, "poly_order must be >= 1"
+
+        # First create the parameters.
+        for i in range(1, self.poly_order + 1):
+            p.append(Parameter(f"p{i}", 0, latex=rf"p_{i}"))
+        return tuple(p)
+
+    @cached_property
+    def logf(self):
+        return np.log10(self.f)
+
+    @cached_property
+    def basis(self):
+        return np.array([self.logf**i for i in range(self.poly_order + 1)])
+
+    def model(self, **p):
+        pp = [p[f"p{i}"] for i in range(self.poly_order + 1)]
+
+        terms = [pp[i] * self.basis[i] for i in range(self.poly_order + 1)]
+        return 10 ** np.sum(terms, axis=0)

@@ -7,8 +7,9 @@ import numpy as np
 from attr import validators as vld
 from cached_property import cached_property
 from edges_cal import receiver_calibration_func as rcf
-from edges_cal.cal_coefficients import LNA, CalibrationObservation, LoadS11
+from edges_cal.cal_coefficients import CalibrationObservation
 from edges_cal.receiver_calibration_func import power_ratio
+from edges_cal.s11 import LoadS11, Receiver
 from edges_io.logging import logger
 from yabf import Component, Parameter, ParameterVector
 
@@ -149,7 +150,7 @@ class CalibratorQ(_CalibrationQ):
             "short": self.calobs.short.s11_model(self.freq),
             "hot_load": self.calobs.hot_load.s11_model(self.freq),
             "ambient": self.calobs.ambient.s11_model(self.freq),
-            "lna": self.calobs.lna.s11_model(self.freq),
+            "lna": self.calobs.receiver.s11_model(self.freq),
         }
 
     @cached_property
@@ -204,7 +205,7 @@ class AntennaQ(_CalibrationQ):
     """
 
     antenna = attr.ib(kw_only=True, validator=attr.validators.instance_of(LoadS11))
-    receiver = attr.ib(kw_only=True, validator=attr.validators.instance_of(LNA))
+    receiver = attr.ib(kw_only=True, validator=attr.validators.instance_of(Receiver))
 
     @cached_property
     def freq(self):
