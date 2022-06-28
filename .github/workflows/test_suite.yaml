@@ -39,7 +39,12 @@ jobs:
         run: |
           pip install -U coverage
           pip install .[dev]
-          pip install git+https://github.com/PolyChord/PolyChordLite@master
+      - name: Setup polychord
+        run: |
+          git clone https://github.com/PolyChord/PolyChordLite
+          cd PolyChordLite
+          python setup.py --no-mpi install
+          cd ..
       - name: Run Tests
         run: |
           python -m pytest --cov-report xml:./coverage.xml -m "not slow"
