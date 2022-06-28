@@ -1349,7 +1349,6 @@ class DataCalibrationLikelihood:
             for src, gamma_src in nwfg_model.gamma_src.items()
         }
 
-        print(as_sim)
         q = {
             name: simulate_q_from_calobs(calobs, name)
             if name in as_sim
