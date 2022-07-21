@@ -1137,7 +1137,7 @@ class DataCalibrationLikelihood:
     @cached_property
     def t_ns_model(self):
         if self.t_ns_params is None:
-            t_ns_params = ParamVec("t_lns", length=self.nw_model.c_terms)
+            t_ns_params = ParamVec("t_lns", length=self.nwfg_model.c_terms)
         else:
             t_ns_params = self.t_ns_params
         return TNS(
@@ -1290,6 +1290,9 @@ class DataCalibrationLikelihood:
     ):
         if loads is None:
             loads = calobs.loads
+
+        if as_sim == "all":
+            as_sim = tuple(calobs.loads.keys())
 
         nwfg_model = NoiseWavesPlusFG.from_labcal(
             labcal,

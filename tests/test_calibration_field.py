@@ -36,7 +36,7 @@ def get_likelihood(
     eor,
     cal_noise,
     simulate=True,
-    ideal_tns=True,
+    ideal_tns=False,
     loss=1,
     bm_corr=1,
     seed=1234,
@@ -55,16 +55,6 @@ def get_likelihood(
 
     tns_model, tns_params = get_tns_model(calobs, ideal=ideal_tns)
 
-    if ideal_tns:
-        scale_model = Polynomial(
-            parameters=np.array(tns_params.fiducial) / labcal.calobs.t_load_ns,
-            transform=UnitTransform(
-                range=(calobs.freq.min.to_value("MHz"), calobs.freq.max.to_value("MHz"))
-            ),
-        )
-    else:
-        scale_model = None
-
     return DataCalibrationLikelihood.from_labcal(
         labcal,
         calobs,
@@ -72,13 +62,13 @@ def get_likelihood(
         qvar_ant=qvar_ant,
         fg_model=fg,
         eor_components=(eor,),
-        sim=simulate,
-        scale_model=lambda f: scale_model(f.to_value("MHz")),
+        as_sim="all" if simulate else (),
         t_ns_params=tns_params,
         cal_noise=cal_noise,
         field_freq=eor.freqs * u.MHz,
         loss=loss,
         bm_corr=bm_corr,
+        loss_temp=296 * (1 - loss),
     )
 
 
@@ -218,14 +208,13 @@ def unity_loss(x):
 
 
 @pytest.mark.parametrize(
-    "lc,cl,qvar_ant,cal_noise,simulate,ideal_tns,atol,fsky,loss,bm_corr",
+    "lc,cl,qvar_ant,cal_noise,simulate,atol,fsky,loss,bm_corr",
     [
         (
             "labcal",
             "calobs",
             0.0,
             0.0,
-            True,
             True,
             0.01,
             "calobs_freq",
@@ -238,7 +227,6 @@ def unity_loss(x):
             1e-10,
             1e-10,
             True,
-            True,
             0.01,
             "calobs_freq",
             unity_loss,
@@ -249,7 +237,6 @@ def unity_loss(x):
             "calobs",
             1e-10,
             "data",
-            True,
             True,
             0.01,
             "calobs_freq",
@@ -262,7 +249,6 @@ def unity_loss(x):
             1e-10,
             "data",
             False,
-            False,
             0.05,
             "calobs_freq",
             unity_loss,
@@ -273,7 +259,6 @@ def unity_loss(x):
             "calobs",
             1e-10,
             "data",
-            True,
             True,
             0.01,
             "calobs_freq_smoothed8",
@@ -286,7 +271,6 @@ def unity_loss(x):
             1e-12,
             "data",
             True,
-            True,
             0.01,
             "sky_freq",
             unity_loss,
@@ -298,7 +282,6 @@ def unity_loss(x):
             1e-10,
             "data",
             True,
-            True,
             0.01,
             "calobs_freq",
             data_like_loss,
@@ -309,7 +292,6 @@ def unity_loss(x):
             "calobs",
             1e-10,
             "data",
-            True,
             True,
             0.01,
             "calobs_freq",
@@ -325,7 +307,6 @@ def test_cal_data_likelihood(
     qvar_ant,
     cal_noise,
     simulate,
-    ideal_tns,
     atol,
     fsky,
     loss,
@@ -346,15 +327,15 @@ def test_cal_data_likelihood(
         eor=eor,
         cal_noise=cal_noise,
         simulate=simulate,
-        ideal_tns=ideal_tns,
         loss=loss(fsky),
         bm_corr=bm_corr(fsky),
+        ideal_tns=False,
     )
 
     res = run_map(lk.partial_linear_model)
     eorspec = lk.partial_linear_model.get_ctx(params=res.x)
 
-    tns_model, _ = get_tns_model(calobs, ideal=ideal_tns)
+    tns_model, _ = get_tns_model(calobs, ideal=False)
     tns_model = tns_model(labcal.calobs.freq.freq.to_value("MHz"))
 
     if plt == mpl.pyplot:
