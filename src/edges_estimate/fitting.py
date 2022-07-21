@@ -2,7 +2,7 @@
 import numpy as np
 from edges_cal.modelling import FixedLinearModel
 from scipy import stats
-from scipy.optimize import minimize
+from scipy.optimize import dual_annealing, minimize
 from yabf import Component
 
 
@@ -47,9 +47,19 @@ class SemiLinearFit:
 
         return -np.sum(norm_obj.logpdf(resid))
 
-    def __call__(self):
-        return minimize(
-            self.neg_lk,
-            x0=np.array([apar.fiducial for apar in self.eor.child_active_params]),
-            bounds=[(apar.min, apar.max) for apar in self.eor.child_active_params],
-        )
+    def __call__(self, dual_annealing_kw=None, **kwargs):
+        if dual_annealing_kw is None:
+            return minimize(
+                self.neg_lk,
+                x0=np.array([apar.fiducial for apar in self.eor.child_active_params]),
+                bounds=[(apar.min, apar.max) for apar in self.eor.child_active_params],
+                **kwargs
+            )
+        else:
+            return dual_annealing(
+                self.neg_lk,
+                bounds=[(apar.min, apar.max) for apar in self.eor.child_active_params],
+                x0=np.array([apar.fiducial for apar in self.eor.child_active_params]),
+                local_search_options=kwargs,
+                **dual_annealing_kw
+            )
