@@ -39,6 +39,11 @@ jobs:
         run: |
           pip install -U coverage
           pip install .[dev]
+      - name: Install gfortran on OSX
+        run: |
+          if [[ ${{ matrix.os }} == "macos-latest" ]]; then
+            brew install gfortran;
+          fi
       - name: Setup polychord
         run: |
           git clone https://github.com/PolyChord/PolyChordLite
