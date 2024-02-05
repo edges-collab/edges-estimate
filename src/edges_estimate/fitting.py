@@ -1,4 +1,5 @@
 """Provides extra routines for fitting that are not in yabf."""
+
 import numpy as np
 from edges_cal.modelling import FixedLinearModel
 from scipy import stats

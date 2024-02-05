@@ -1,6 +1,7 @@
 """
 Models of the foregrounds
 """
+
 import attr
 import numpy as np
 from cached_property import cached_property
