@@ -76,10 +76,7 @@ class PhysicalHills(_PhysicalBase):
 class PhysicalSmallIonDepth(_PhysicalBase):
     """Eq. 7 from Hills et al."""
 
-    base_parameters = [
-        *_PhysicalBase.base_parameters,
-        Parameter("b4", 0, latex=r"b_4 [K]")
-    ]
+    base_parameters = [*_PhysicalBase.base_parameters, Parameter("b4", 0, latex=r"b_4 [K]")]
 
     def model(self, **p):
         first_term, _ = super().model(p)
@@ -169,9 +166,7 @@ class LinLog(Foreground):
         super().__attrs_post_init__()
 
         if not self.use_p1 and "p1" in self.child_active_params:
-            raise ValueError(
-                "You are attempting to fit p1, but it won't affect anything!"
-            )
+            raise ValueError("You are attempting to fit p1, but it won't affect anything!")
 
     @cached_property
     def base_parameters(self):
@@ -184,10 +179,7 @@ class LinLog(Foreground):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        p.extend(
-            Parameter(f"p{i}", 0, latex=rf"p_{i}")
-            for i in range(2, self.poly_order)
-        )
+        p.extend(Parameter(f"p{i}", 0, latex=rf"p_{i}") for i in range(2, self.poly_order))
         return tuple(p)
 
     @cached_property
@@ -230,9 +222,7 @@ class DampedOscillations(Foreground):
 
     def model(self, **p):
         phase = 2 * np.pi * self.freqs / p["P"]
-        return (self.f) ** p["b"] * (
-            p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase)
-        )
+        return (self.f) ** p["b"] * (p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase))
 
 
 @attr.s
@@ -291,10 +281,7 @@ class Bias(Component):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        p.extend(
-            Parameter(f"b{i}", 0, latex=rf"b_{i}")
-            for i in range(1, self.poly_order)
-        )
+        p.extend(Parameter(f"b{i}", 0, latex=rf"b_{i}") for i in range(1, self.poly_order))
         return tuple(p)
 
     def evaluate_poly(self, **params):
@@ -339,10 +326,7 @@ class LogPoly(Foreground):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        p.extend(
-            Parameter(f"p{i}", 0, latex=rf"p_{i}")
-            for i in range(1, self.poly_order + 1)
-        )
+        p.extend(Parameter(f"p{i}", 0, latex=rf"p_{i}") for i in range(1, self.poly_order + 1))
         return tuple(p)
 
     @cached_property

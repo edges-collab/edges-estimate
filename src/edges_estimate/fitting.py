@@ -39,9 +39,7 @@ class SemiLinearFit:
     def neg_lk(self, p):
         resid = self.get_resid(p)
         if hasattr(self.sigma, "ndim") and self.sigma.ndim == 2:
-            norm_obj = stats.multivariate_normal(
-                mean=np.zeros_like(resid), cov=self.sigma
-            )
+            norm_obj = stats.multivariate_normal(mean=np.zeros_like(resid), cov=self.sigma)
         else:
             norm_obj = stats.norm(loc=0, scale=self.sigma)
 
