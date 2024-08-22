@@ -1,29 +1,27 @@
-import pytest
-
 import matplotlib as mpl
 import numpy as np
+import pytest
 from astropy import units as u
 from edges_cal.modelling import Polynomial, UnitTransform
-from edges_cal.simulate import simulate_qant_from_calobs
 from helpers import get_tns_model, sim_antenna_q
 from scipy import stats
-from yabf import ParamVec, run_map
+from yabf import run_map
 
 from edges_estimate.eor_models import AbsorptionProfile
 from edges_estimate.likelihoods import DataCalibrationLikelihood
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def calobs_freq(calobs):
     return calobs.freq.freq.to_value("MHz")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def calobs_freq_smoothed8(calobs):
     return calobs.freq.freq[::8].to_value("MHz")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def sky_freq():
     return np.linspace(58, 93, 120)
 
@@ -154,7 +152,7 @@ def view_results(
         nu,
         delta,
         color=color,
-        label=rf"Max $\Delta = {np.max(np.abs(delta))*1000:1.2e}$mK",
+        label=rf"Max $\Delta = {np.max(np.abs(delta)) * 1000:1.2e}$mK",
     )
     ax[1, 0].set_ylabel("Difference [K]")
 
@@ -208,7 +206,7 @@ def unity_loss(x):
 
 
 @pytest.mark.parametrize(
-    "lc,cl,qvar_ant,cal_noise,simulate,atol,fsky,loss,bm_corr",
+    ("lc","cl","qvar_ant","cal_noise","simulate","atol","fsky","loss","bm_corr"),
     [
         (
             "labcal",

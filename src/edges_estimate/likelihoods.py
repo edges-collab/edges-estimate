@@ -1,7 +1,11 @@
+"""Likelihoods for analysing EDGES data."""
 from __future__ import annotations
 
-import attr
 import logging
+from collections.abc import Sequence
+from typing import Callable
+
+import attr
 import numpy as np
 from astropy import units as u
 from cached_property import cached_property
@@ -18,10 +22,8 @@ from edges_cal.modelling import (
 )
 from edges_cal.simulate import simulate_q_from_calobs
 from matplotlib import pyplot as plt
-from pathlib import Path
 from scipy import stats
-from scipy.interpolate import InterpolatedUnivariateSpline as spline
-from typing import Callable, Sequence
+from scipy.interpolate import InterpolatedUnivariateSpline as Spline
 from yabf import Component, Likelihood, Parameter, ParameterVector, ParamVec
 from yabf.chi2 import Chi2, MultiComponentChi2
 
@@ -30,7 +32,7 @@ from .eor_models import AbsorptionProfile
 logger = logging.getLogger(__name__)
 
 try:
-    profile  # noqa: F821
+    profile  # noqa: B018
 except NameError:
 
     def profile(fnc):
@@ -70,7 +72,7 @@ class MultiComponentChi2SigmaT(MultiComponentChi2):
 @attr.s(frozen=True)
 class RadiometricAndWhiteNoise(MultiComponentChi2):
     """
-    Likelihood with noise model based on Sims et al 2019 (1910.03165)
+    Likelihood with noise model based on Sims et al 2019 (1910.03165).
 
     This will only work if a single spectrum is used in the likelihood.
 
@@ -88,21 +90,22 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
 
     @weights.validator
     def _wght_validator(self, att, val):
-        if type(val) == int and val == 1:
+        if (isinstance(val, int) and val == 1) or (
+            isinstance(val, np.ndarray) and val.shape == self.freqs.shape
+        ):
             return
-        elif isinstance(val, np.ndarray) and val.shape == self.freqs.shape:
-            return
-        else:
-            raise ValueError(
-                f"weights must be an array with the same length as freqs."
-                f"Got weight.shape == {val.shape} and freqs.shape == {self.freqs.shape}"
-            )
+
+        raise ValueError(
+            f"weights must be an array with the same length as freqs."
+            f"Got weight.shape == {val.shape} and freqs.shape == {self.freqs.shape}"
+        )
 
     @cached_property
     def freqs(self):
         for cmp in self.components:
             if hasattr(cmp, "freqs"):
                 return cmp.freqs
+        raise ValueError("No freqs found in any component")
 
     @cached_property
     def channel_width(self):
@@ -158,7 +161,8 @@ class PartialLinearModel(Chi2, Likelihood):
 
     Eq. 15 of M18 is
 
-    .. math:: d_\star^T \Sigma^{-1} d_\start - d_\star^T \Sigma^{-1} A (A^T \Sigma^{-1} A)^{-1} A^T \Sigma^{-1} d_\star
+    .. math:: d_\star^T \Sigma^{-1} d_\start - d_\star^T \Sigma^{-1} A
+              (A^T \Sigma^{-1} A)^{-1} A^T \Sigma^{-1} d_\star
 
     where :math:`d_\star`  is the residual of the linear model: :math:`d_star = d - A\hat{\theta}`.
     (note that we're omitting the nonlinear 21cm model from that paper here because
@@ -181,6 +185,7 @@ class PartialLinearModel(Chi2, Likelihood):
     But the `H` matrix is idempotent, so :math:`Hd - HHd = Hd - Hd = 0`. So we are left
     with the first term only.
     """
+
     linear_model: Model = attr.ib()
     variance_func: Callable | None = attr.ib(default=None)
     data_func: Callable | None = attr.ib(default=None)
@@ -195,15 +200,12 @@ class PartialLinearModel(Chi2, Likelihood):
         else:
             var = self.variance_func(ctx, self.data)
 
-        if self.data_func is None:
-            data = self.data["data"]
-        else:
-            data = self.data_func(ctx, self.data)
+        data = self.data["data"] if self.data_func is None else self.data_func(ctx, self.data)
 
-        if self.basis_func is None:
-            linear_model = self.linear_model
-        else:
-            linear_model = self.basis_func(self.linear_model, ctx, self.data)
+        linear_model = (
+            self.linear_model if self.basis_func is None
+            else self.basis_func(self.linear_model, ctx, self.data)
+        )
 
         wght = 1.0 if np.all(var == 0) else 1 / var
 
@@ -253,8 +255,7 @@ class PartialLinearModel(Chi2, Likelihood):
             fit = model[0]
             h = fit.hessian
             return np.log(np.linalg.det(h))
-        else:
-            return self.logdetCinv
+        return self.logdetCinv
 
     def logdet_sig(self, model, ctx, **params):
         """A derived quantity, the log-determinant of the covariance matrix."""
@@ -310,20 +311,17 @@ class PartialLinearModel(Chi2, Likelihood):
     def get_unmarginalized_lnl(self, linear_params, nonlinear_params):
         ctx = self.get_ctx(params=nonlinear_params)
 
-        if self.variance_func is None:
-            var = self.data["data_variance"]
-        else:
-            var = self.variance_func(ctx, self.data)
+        var = (
+            self.data["data_variance"] if self.variance_func is None
+            else self.variance_func(ctx, self.data)
+        )
 
-        if self.data_func is None:
-            data = self.data["data"]
-        else:
-            data = self.data_func(ctx, self.data)
+        data = self.data["data"] if self.data_func is None else self.data_func(ctx, self.data)
 
-        if self.basis_func is None:
-            linear_model = self.linear_model
-        else:
-            linear_model = self.basis_func(self.linear_model, ctx, self.data)
+        linear_model = (
+            self.linear_model if self.basis_func is None
+            else self.basis_func(self.linear_model, ctx, self.data)
+        )
 
         linear = linear_model(parameters=linear_params)
 
@@ -338,9 +336,8 @@ class PartialLinearModel(Chi2, Likelihood):
         result[np.diag_indices_from(result)] -= 1 / var
         result = np.linalg.inv(result)
         result[np.diag_indices_from(result)] += var
-        result = np.linalg.inv(result)
+        return np.linalg.inv(result)
 
-        return result
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -377,8 +374,7 @@ class TNS(Component):
     def provides(self):
         if self.field_freq is None:
             return ["tns"]
-        else:
-            return ["tns", "tns_field"]
+        return ["tns", "tns_field"]
 
     @cached_property
     def base_parameters(self):
@@ -406,14 +402,12 @@ class TNS(Component):
         ).at(x=self.field_freq)
 
     def calculate(self, ctx, **params):
-
         tns = self.model(parameters=list(params.values()))
 
         if self.field_freq is not None:
             tns_field = self.field_model(parameters=list(params.values()))
             return tns, tns_field
-        else:
-            return tns
+        return tns
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -476,14 +470,13 @@ class NoiseWaveCoefficients(Component):
                     for src in self.source_names
                 )
             )
-        else:
-            return {
-                src: rcf.get_K(
-                    gamma_rec=ctx["rcv_gamma" if src != "ant" else "rcvant_gamma"],
-                    gamma_ant=ctx[f"{src}_gamma"],
-                )
-                for src in self.source_names
-            }
+        return {
+            src: rcf.get_K(
+                gamma_rec=ctx["rcv_gamma" if src != "ant" else "rcvant_gamma"],
+                gamma_ant=ctx[f"{src}_gamma"],
+            )
+            for src in self.source_names
+        }
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -527,7 +520,7 @@ class NoiseWaveLikelihood:
         return PartialLinearModel(
             linear_model=self.nw_model.linear_model,
             data=self.data,
-            components=(self.t_ns_model,) + self.s11_systematics,
+            components=(self.t_ns_model, *self.s11_systematics),
             data_func=self.transform_data,
             variance_func=self.transform_variance if self.sig_by_tns else None,
             derived=tuple(
@@ -560,7 +553,7 @@ class NoiseWaveLikelihood:
         repeater = (m.tunc.n_terms, m.tcos.n_terms, m.tsin.n_terms)
         if "tload" in m.extra_basis:
             extra_basis["tload"] = m.extra_basis["tload"]
-            repeater = repeater + (m.tload.n_terms,)
+            repeater = (*repeater, m.tload.n_terms)
 
         # We do the following (updating the basis functions manually) for speed
         # If we don't pass "init_basis" explicitly, the whole basis function has to
@@ -761,21 +754,19 @@ class NoiseWaveLikelihood:
             freq = self.nw_model.freq
 
         model = fit.fit.model
-        if sample:
-            linear_params = fit.get_sample()[0]
-        else:
-            linear_params = fit.model_parameters
+
+        linear_params = fit.get_sample()[0] if sample else fit.model_parameters
 
         out = {
             name: model.get_model(name, x=freq, parameters=linear_params)
             for name in model.models
         }
 
-        pp = []
-        for i, p in enumerate(self.partial_linear_model.child_active_params):
-            if p.name.startswith("t_lns"):
-                pp.append(params[i])
-
+        pp = [
+            params[i]
+            for i, p in enumerate(self.partial_linear_model.child_active_params)
+            if p.name.startswith("t_lns")
+        ]
         out["tns"] = self.t_ns_model.model.model(x=freq, parameters=pp)
         out["params"] = linear_params
         return out
@@ -820,8 +811,8 @@ class NoiseWaveLikelihood:
             rcv = ctx["rcv_gamma"]
 
             if len(freq) != len(rcv):
-                re = spline(self.nw_model.freq, np.real(rcv))(freq)
-                im = spline(self.nw_model.freq, np.imag(rcv))(freq)
+                re = Spline(self.nw_model.freq, np.real(rcv))(freq)
+                im = Spline(self.nw_model.freq, np.imag(rcv))(freq)
                 rcv = re + 1j * im
         else:
             rcv = labcal.calobs.receiver_s11(freq * u.MHz)
@@ -861,11 +852,11 @@ class NoiseWaveLikelihood:
         return fit.get_sample()
 
     def rms_parts(self, model, ctx, **params):
-        fit, data, var = model
+        fit, _, var = model
 
         rms_parts = []
         n = 0
-        for i, (name, d) in enumerate(self.data.items()):
+        for d in self.data.values():
             v = var[n : n + len(d)]
             r = fit.residual[n : n + len(d)]
 
@@ -912,13 +903,12 @@ class NoiseWavesPlusFG:
 
     @cached_property
     def gamma_src(self):
-        return {**self._gamma_src, **{"ant": self.gamma_ant}}
+        return {**self._gamma_src, "ant": self.gamma_ant}
 
     def _freq(self, src: str):
         if src == "ant":
             return self.field_freq
-        else:
-            return self.freq
+        return self.freq
 
     @cached_property
     def src_names(self) -> list[str]:
@@ -1007,12 +997,11 @@ class NoiseWavesPlusFG:
     def _get_idx(self, src: str):
         if src == "ant":
             return slice(-len(self.field_freq), None, None)
-        else:
-            return slice(
-                self.src_names.index(src) * len(self.freq),
-                (1 + self.src_names.index(src)) * len(self.freq),
-                None,
-            )
+        return slice(
+            self.src_names.index(src) * len(self.freq),
+            (1 + self.src_names.index(src)) * len(self.freq),
+            None,
+        )
 
     def get_temperature_term(
         self,
@@ -1030,8 +1019,7 @@ class NoiseWavesPlusFG:
 
         if src:
             return out[self._get_idx(src)]
-        else:
-            return out[: len(self.linear_model.x)]
+        return out[: len(self.linear_model.x)]
 
     def get_full_model(
         self, src: str, parameters: Sequence | None = None
@@ -1054,10 +1042,9 @@ class NoiseWavesPlusFG:
         def modify(thing, n):
             if len(thing) < wterms:
                 return thing + [0] * (n - len(thing))
-            elif len(thing) > wterms:
+            if len(thing) > wterms:
                 return thing[:n]
-            else:
-                return thing
+            return thing
 
         tu = modify(calobs.Tunc_poly.coefficients[::-1].tolist(), wterms)
         tc = modify(calobs.Tcos_poly.coefficients[::-1].tolist(), wterms)
@@ -1186,7 +1173,7 @@ class DataCalibrationLikelihood:
         return PartialLinearModel(
             linear_model=self.nwfg_model.linear_model,
             data=self.data,
-            components=(self.t_ns_model,) + self.eor_components + self.s11_systematics,
+            components=(self.t_ns_model, *self.eor_components , *self.s11_systematics),
             data_func=self.transform_data,
             variance_func=self.transform_variance,
             verbose=self.verbose,
@@ -1201,10 +1188,8 @@ class DataCalibrationLikelihood:
     def transform_data(self, ctx: dict, data: dict):
         tns = ctx["tns"]
         Tant = ctx["eor_spectrum"]
-        if "K" in ctx:
-            k0 = {name: kk[0] for name, kk in ctx["K"].items()}
-        else:
-            k0 = data["k0"]
+
+        k0 = {name: kk[0] for name, kk in ctx["K"].items()} if "K" in ctx else data["k0"]
 
         out = []
         for src in self.src_names:
@@ -1226,8 +1211,7 @@ class DataCalibrationLikelihood:
 
         return np.concatenate(
             [
-                data["data_variance"][src]
-                * (field_tns**2 if src == "ant" else tns**2)
+                data["data_variance"][src] * (field_tns**2 if src == "ant" else tns**2)
                 for src in self.src_names
             ]
         )
@@ -1493,7 +1477,7 @@ class DataCalibrationLikelihood:
         return a * self.data["q"][src] + b
 
     def sky_temp_model(self, params=None) -> tuple[np.ndarray, np.ndarray]:
-        fit, data, var = self.partial_linear_model.reduce_model(params=params)
+        fit, *_ = self.partial_linear_model.reduce_model(params=params)
         freq = self.nwfg_model._freq("ant")
 
         fg = fit.fit.model.fg(x=freq)  # there's no K[0] or loss in this

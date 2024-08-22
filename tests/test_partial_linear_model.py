@@ -1,8 +1,7 @@
-import pytest
-
 import attr
 import matplotlib.pyplot as mpl
 import numpy as np
+import pytest
 from edges_cal.modelling import Polynomial
 from yabf import Component, Parameter, run_map
 from yabf.samplers.polychord import polychord
@@ -42,7 +41,6 @@ class Scale(Component):
 
 @pytest.fixture(scope="module")
 def simple_plm():
-
     x = np.linspace(-1, 1, 100)
 
     linear_model = Polynomial(parameters=[1, 3]).at(x=x)
@@ -60,7 +58,6 @@ def simple_plm():
 
 @pytest.fixture(scope="module")
 def scaled_plm():
-
     x = np.linspace(-1, 1, 100)
 
     linear_model = Polynomial(parameters=[1, 3]).at(x=x)
@@ -72,8 +69,7 @@ def scaled_plm():
     ) / scale()["scale"]
 
     def vfunc(ctx, data):
-        v = ctx["scale"] ** 2 * data["data_variance"]
-        return v
+        return ctx["scale"] ** 2 * data["data_variance"]
 
     return PartialLinearModel(
         components=(sinx, scale),

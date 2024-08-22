@@ -7,9 +7,8 @@ model, the extra parameters are estimated at zero. Then it goes on to compare th
 of each of these models, ensuring that the smaller model has a better BIC.
 """
 
-import pytest
-
 import numpy as np
+import pytest
 from numdifftools import Hessian
 from yabf import run_map
 

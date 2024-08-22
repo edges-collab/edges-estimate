@@ -1,6 +1,5 @@
-import pytest
-
 import numpy as np
+import pytest
 
 from edges_estimate import plots as p
 

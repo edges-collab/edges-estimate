@@ -1,8 +1,8 @@
-"""
-Components for performing calibration on raw data.
-"""
-import attr
+"""Components for performing calibration on raw data."""
+
 import logging
+
+import attr
 import numpy as np
 from attr import validators as vld
 from cached_property import cached_property
@@ -11,19 +11,18 @@ from edges_cal.cal_coefficients import CalibrationObservation
 from edges_cal.receiver_calibration_func import power_ratio
 from edges_cal.s11 import LoadS11, Receiver
 from edges_io.logging import logger
-from yabf import Component, Parameter, ParameterVector
+from yabf import Component, ParameterVector
 
 
 def _log_level_converter(val):
     if isinstance(val, int):
         return val
-    elif isinstance(val, str):
-        try:
-            return getattr(logging, val.upper())
-        except AttributeError:
-            raise ValueError(f"{val} is not an available logging level")
-    else:
+    if not isinstance(val, str):
         raise TypeError("log_level must be int or str")
+    try:
+        return getattr(logging, val.upper())
+    except AttributeError as e:
+        raise ValueError(f"{val} is not an available logging level") from e
 
 
 @attr.s(frozen=True, cache_hash=True)
@@ -81,14 +80,16 @@ class _CalibrationQ(Component):
 
     @cached_property
     def data_mask(self):
-        """The data itself is averaged_Q from the LoadSpectrum, which may involve different
-        frequencies than the calibration itself. Here we get which elements to actually use."""
-        mask = []
-        for i, flag in enumerate(self.calobs.open.spectrum.freq.mask):
-            if not flag:
-                continue
-            else:
-                mask.append(self.calobs.freq.mask[i])
+        """The data mask to use.
+
+        The data itself is averaged_Q from the LoadSpectrum, which may involve different
+        frequencies than the calibration itself. Here we get which elements to actually use.
+        """
+        mask = [
+            self.calobs.freq.mask[i]
+            for i, flag in enumerate(self.calobs.open.spectrum.freq.mask)
+            if flag
+        ]
         return np.array(mask, dtype=bool)
 
     @cached_property
@@ -136,12 +137,7 @@ class _CalibrationQ(Component):
 
 @attr.s(frozen=True)
 class CalibratorQ(_CalibrationQ):
-    """Component providing calibration Q_P for calibrator sources ambient, hot_load,
-    open, short.
-
-    Parameters
-    ----------
-    """
+    """Component providing calibration Q_P for calibrator sources."""
 
     @cached_property
     def s11_models(self):
@@ -190,8 +186,7 @@ class CalibratorQ(_CalibrationQ):
 
 @attr.s(frozen=True)
 class AntennaQ(_CalibrationQ):
-    """Component providing calibration Q_P for calibrator sources ambient, hot_load,
-    open, short.
+    """Component providing calibration Q_P for calibrator sources.
 
     Parameters
     ----------

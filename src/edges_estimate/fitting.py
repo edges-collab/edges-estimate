@@ -1,4 +1,5 @@
 """Provides extra routines for fitting that are not in yabf."""
+
 import numpy as np
 from edges_cal.modelling import FixedLinearModel
 from scipy import stats
@@ -13,7 +14,6 @@ class SemiLinearFit:
         Useful for fitting foregrounds and EoR at the same time, where the EoR model is
         not linear, but the foreground model is.
         """
-
         self.fg = fg
         self.eor = eor
         self.spectrum = spectrum
@@ -53,13 +53,12 @@ class SemiLinearFit:
                 self.neg_lk,
                 x0=np.array([apar.fiducial for apar in self.eor.child_active_params]),
                 bounds=[(apar.min, apar.max) for apar in self.eor.child_active_params],
-                **kwargs
+                **kwargs,
             )
-        else:
-            return dual_annealing(
-                self.neg_lk,
-                bounds=[(apar.min, apar.max) for apar in self.eor.child_active_params],
-                x0=np.array([apar.fiducial for apar in self.eor.child_active_params]),
-                local_search_options=kwargs,
-                **dual_annealing_kw
-            )
+        return dual_annealing(
+            self.neg_lk,
+            bounds=[(apar.min, apar.max) for apar in self.eor.child_active_params],
+            x0=np.array([apar.fiducial for apar in self.eor.child_active_params]),
+            local_search_options=kwargs,
+            **dual_annealing_kw,
+        )

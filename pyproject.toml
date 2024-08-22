@@ -1,0 +1,166 @@
+[build-system]
+requires = ["setuptools>=60", "setuptools_scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+
+[project]
+name = "edges-estimate"
+description = "Parameter Estimation for EDGES"
+readme = "README.rst"
+authors = [
+    {name="Steven Murray", email="steven.murray@sns.it"},
+]
+license = {text="MIT"}
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Operating System :: Windows",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+    "cached-property",
+    "click>=6.0",
+    "edges-cal",
+    "numpy>=1.6.2",
+    "scipy",
+    "yabf>=2.0"
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/edges-collab/edges_estimate"
+Issues = "https://github.com/edges-collab/edges_estimate/issues"
+Changelog = "https://github.com/edges-collab/edges_estimate/releases"
+
+
+[project.optional-dependencies]
+docs = [
+    "ipython",
+    "Sphinx>=1.7.5",
+    "nbsphinx",
+    "numpydoc>=0.8.0",
+    "sphinx-rtd-theme",
+]
+tests = [
+  "edges-analysis",
+  "numdifftools",
+  "coverage",
+  "pytest",
+  "pytest-cases",
+  "pytest-cov",
+  "pytest-plt",
+]
+dev = [
+  "pre-commit",
+  "edges-estimate[docs,tests]"
+]
+
+[tool.pytest.ini_options]
+# Options for py.test:
+# Specify command line options as you would do when invoking py.test directly.
+# e.g. --cov-report html (or xml) for html/xml output or --junitxml junit.xml
+# in order to write a coverage file that can be read by Jenkins.
+addopts = "--cov edges-estimate --verbose --durations=25 -m 'not slow'"
+norecursedirs = [
+    "dist",
+    "build",
+]
+testpaths = "tests"
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+exclude = ['devel/']
+[tool.ruff.lint]
+extend-select = [
+  "UP",   # pyupgrade
+  "E",    # pycodestyle
+  "W",    # pycodestyle warning
+  "F",    # pyflakes
+  "C90",  # mccabe complexity
+  "I",    # isort
+  "N",    # pep8-naming
+  "D",    # docstyle
+  # "ANN"   # type annotations
+  "B",    # bugbear
+  "A",    # builtins
+  "C4",   # comprehensions
+  "DTZ",  # datetime
+  "FA",   # future annotations
+  "PIE",  # flake8-pie
+  "T",    # print statements
+  "PT",   # pytest-style
+  "Q",    # quotes
+  "SIM",  # simplify
+  "PTH",  # use Pathlib
+  "ERA",  # kill commented code
+  "NPY",  # numpy-specific rules
+  "PERF", # performance
+  # "FURB", # refurb
+  "RUF",  # ruff-specific rules
+  "RET",  # return statements
+  "RSE",  # exception raises
+  "TRY201", # verbose raise
+]
+
+ignore = [
+    "DTZ007",   # use %z in strptime
+    "N806",  # Variable name should be lower case. We have some single-letter variables that make more sense to be caps.
+    "A003",  # Class attribute shadows a python builtin -- not much chance of that causing a problem
+    "D401",  # First line should be in imperative mood -- cached_properties don't fit this bill.
+    "D101",  # Missing docstring in public class -- my docstrings are in the __init__ which seems to fail this ?
+    "N815",
+    "N807",  # Allow method names to start and end with __
+    "B008",  # allow setting defaults that call functions
+    "RUF012", # mutable class attributes annotation
+    # The rest should be removed when possible...
+    "PTH123",
+    "PT011",
+    "NPY002",
+    "D102",
+    "D103",
+    "N802",
+    "N803",
+    "T201",  #currently we have print statements..
+    "RUF005"
+    #"A005",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = [
+    "D",  # ignore missing docstring in tests
+    "DTZ",   # ignore datetime in tests
+    "T",     # print statements
+]
+"docs/conf.py" = [
+    "A",  # conf.py can shadow builtins
+    "ERA",
+    "DTZ",
+]
+"src/*/__init__.py" = [
+    "F401", "E402",
+]
+"docs/tutorials/*.ipynb" = [
+    "T", # allow prints in notebooks
+]
+
+
+[tool.ruff.lint.pydocstyle]
+convention = 'numpy'
+property-decorators = [
+    "property",
+    "functools.cached_property",
+    "pytest.fixture"
+]
+[tool.ruff.lint.mccabe]
+max-complexity = 21

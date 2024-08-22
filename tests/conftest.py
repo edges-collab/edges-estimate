@@ -1,11 +1,11 @@
-import pytest
+from pathlib import Path
 
 import hickle
 import numpy as np
+import pytest
 from edges_analysis.analysis.calibrate import LabCalibration
 from edges_cal import Calibrator
 from edges_cal.modelling import LinLog
-from pathlib import Path
 from scipy import stats
 
 from edges_estimate.eor_models import AbsorptionProfile
@@ -75,12 +75,12 @@ def fiducial_eor(calobs):
     )
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def fiducial_fg():
     return LinLog(n_terms=5, parameters=[2000, 10, -10, 5, -5])
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def fiducial_fg_logpoly():
     return LogPoly(
         freqs=np.linspace(50, 100, 100),
@@ -93,7 +93,7 @@ def fiducial_fg_logpoly():
     )
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def fiducial_dampedoscillations():
     return DampedOscillations(
         freqs=np.linspace(50, 100, 100),

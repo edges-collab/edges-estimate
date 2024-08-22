@@ -1,17 +1,18 @@
+"""21cm absorption feature models."""
 import attr
 import numpy as np
 from yabf import Component, Parameter
 
 
-def phenom_model(freqs, A, tau, w, nu0):
-    """really bad inverse gaussian thing."""
+def phenom_model(freqs, amp, tau, w, nu0):
+    """Really bad inverse gaussian thing."""
     B = (
         4
         * (freqs - nu0) ** 2
         / w**2
         * np.log(-1 / tau * np.log((1 + np.exp(-tau)) / 2))
     )
-    return -A * (1 - np.exp(-tau * np.exp(B))) / (1 - np.exp(-tau))
+    return -amp * (1 - np.exp(-tau * np.exp(B))) / (1 - np.exp(-tau))
 
 
 @attr.s

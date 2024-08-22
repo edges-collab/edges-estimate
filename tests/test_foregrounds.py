@@ -1,5 +1,3 @@
-import pytest
-
 import numpy as np
 from yabf import chi2, run_map
 
