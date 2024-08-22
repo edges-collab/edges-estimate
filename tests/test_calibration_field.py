@@ -3,25 +3,24 @@ import numpy as np
 import pytest
 from astropy import units as u
 from edges_cal.modelling import Polynomial, UnitTransform
+from edges_estimate.eor_models import AbsorptionProfile
+from edges_estimate.likelihoods import DataCalibrationLikelihood
 from helpers import get_tns_model, sim_antenna_q
 from scipy import stats
 from yabf import run_map
 
-from edges_estimate.eor_models import AbsorptionProfile
-from edges_estimate.likelihoods import DataCalibrationLikelihood
 
-
-@pytest.fixture
+@pytest.fixture()
 def calobs_freq(calobs):
     return calobs.freq.freq.to_value("MHz")
 
 
-@pytest.fixture
+@pytest.fixture()
 def calobs_freq_smoothed8(calobs):
     return calobs.freq.freq[::8].to_value("MHz")
 
 
-@pytest.fixture
+@pytest.fixture()
 def sky_freq():
     return np.linspace(58, 93, 120)
 
@@ -39,9 +38,7 @@ def get_likelihood(
     bm_corr=1,
     seed=1234,
 ):
-    q = sim_antenna_q(
-        labcal, calobs, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr
-    )
+    q = sim_antenna_q(labcal, calobs, fg, eor, ideal_tns=ideal_tns, loss=loss, bm_corr=bm_corr)
 
     if isinstance(qvar_ant, (int, float)):
         qvar_ant = qvar_ant * np.ones(len(eor.freqs))
@@ -102,9 +99,7 @@ def get_eor(freqs):
     )
 
 
-def view_results(
-    lk, res_data, calobs, eor, plt, sim_tns=True, label=None, fig=None, ax=None, c=0
-):
+def view_results(lk, res_data, calobs, eor, plt, sim_tns=True, label=None, fig=None, ax=None, c=0):
     """Simple function to create a plot of input vs expected TNS and T21."""
     eorspec = lk.partial_linear_model.get_ctx(params=res_data.x)
 
@@ -206,7 +201,7 @@ def unity_loss(x):
 
 
 @pytest.mark.parametrize(
-    ("lc","cl","qvar_ant","cal_noise","simulate","atol","fsky","loss","bm_corr"),
+    ("lc", "cl", "qvar_ant", "cal_noise", "simulate", "atol", "fsky", "loss", "bm_corr"),
     [
         (
             "labcal",
@@ -340,6 +335,4 @@ def test_cal_data_likelihood(
         view_results(lk, res, calobs, eor, plt, sim_tns=simulate)
 
     np.testing.assert_allclose(tns_model, eorspec["tns"], atol=0, rtol=1e-2)
-    np.testing.assert_allclose(
-        eor()["eor_spectrum"], eorspec["eor_spectrum"], atol=atol, rtol=0
-    )
+    np.testing.assert_allclose(eor()["eor_spectrum"], eorspec["eor_spectrum"], atol=atol, rtol=0)

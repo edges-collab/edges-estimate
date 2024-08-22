@@ -10,9 +10,7 @@ def create_mock_data(fiducial_fg_logpoly):
 
 def test_retrieve_params(fiducial_fg_logpoly):
     spec = create_mock_data(fiducial_fg_logpoly)
-    lk = chi2.MultiComponentChi2(
-        kind="spectrum", components=[fiducial_fg_logpoly], data=spec
-    )
+    lk = chi2.MultiComponentChi2(kind="spectrum", components=[fiducial_fg_logpoly], data=spec)
     a = run_map(lk)
     assert a.success
     assert np.allclose(a.x, [2, -2.5, 50])

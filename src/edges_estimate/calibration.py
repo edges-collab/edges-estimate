@@ -30,12 +30,8 @@ class _CalibrationQ(Component):
     """Base Component providing calibration Q_P."""
 
     path = attr.ib(kw_only=True, default="", validator=vld.instance_of(str))
-    calobs_args = attr.ib(
-        kw_only=True, default={}, converter=dict, validator=vld.instance_of(dict)
-    )
-    _log_level = attr.ib(
-        kw_only=True, default=logging.WARNING, converter=_log_level_converter
-    )
+    calobs_args = attr.ib(kw_only=True, default={}, converter=dict, validator=vld.instance_of(dict))
+    _log_level = attr.ib(kw_only=True, default=logging.WARNING, converter=_log_level_converter)
     _calobs = attr.ib(
         kw_only=True,
         default=None,
@@ -116,21 +112,11 @@ class _CalibrationQ(Component):
         params = self._fill_params(params)
 
         # Put coefficients in backwards, because that's how the polynomial works.
-        c1_poly = np.poly1d(
-            [params[f"C1_{i}"] for i in range(self.calobs.cterms)[::-1]]
-        )
-        c2_poly = np.poly1d(
-            [params[f"C2_{i}"] for i in range(self.calobs.cterms)[::-1]]
-        )
-        tunc_poly = np.poly1d(
-            [params[f"Tunc_{i}"] for i in range(self.calobs.wterms)[::-1]]
-        )
-        tcos_poly = np.poly1d(
-            [params[f"Tcos_{i}"] for i in range(self.calobs.wterms)[::-1]]
-        )
-        tsin_poly = np.poly1d(
-            [params[f"Tsin_{i}"] for i in range(self.calobs.wterms)[::-1]]
-        )
+        c1_poly = np.poly1d([params[f"C1_{i}"] for i in range(self.calobs.cterms)[::-1]])
+        c2_poly = np.poly1d([params[f"C2_{i}"] for i in range(self.calobs.cterms)[::-1]])
+        tunc_poly = np.poly1d([params[f"Tunc_{i}"] for i in range(self.calobs.wterms)[::-1]])
+        tcos_poly = np.poly1d([params[f"Tcos_{i}"] for i in range(self.calobs.wterms)[::-1]])
+        tsin_poly = np.poly1d([params[f"Tsin_{i}"] for i in range(self.calobs.wterms)[::-1]])
 
         return c1_poly, c2_poly, tunc_poly, tcos_poly, tsin_poly
 

@@ -23,16 +23,12 @@ def get_evidence(root: str):
     return evidence
 
 
-def get_models_from_mcsamples(
-    mcsamples, lk_names, lk=None, extras=None, n=None, progress=True
-):
+def get_models_from_mcsamples(mcsamples, lk_names, lk=None, extras=None, n=None, progress=True):
     if isinstance(mcsamples, str):
         mcsamples = loadMCSamples(mcsamples)
 
     if n is not None:
-        samples = mcsamples.samples[
-            np.random.choice(mcsamples.samples.shape[0], size=n)
-        ]
+        samples = mcsamples.samples[np.random.choice(mcsamples.samples.shape[0], size=n)]
     else:
         samples = mcsamples.samples
 
@@ -81,9 +77,5 @@ def make_residual_plot_shaded(models, freqs=None, temps=None, labels=None, color
         q = np.quantile(model, q=(0.04, 0.16, 0.5, 0.84, 0.96), axis=0)
 
         plt.plot(freq, temp - q[2], color=color or f"C{i}", label=label)
-        plt.fill_between(
-            freq, temp - q[1], temp - q[3], color=color or f"C{i}", alpha=0.6
-        )
-        plt.fill_between(
-            freq, temp - q[0], temp - q[4], color=color or f"C{i}", alpha=0.4
-        )
+        plt.fill_between(freq, temp - q[1], temp - q[3], color=color or f"C{i}", alpha=0.6)
+        plt.fill_between(freq, temp - q[0], temp - q[4], color=color or f"C{i}", alpha=0.4)

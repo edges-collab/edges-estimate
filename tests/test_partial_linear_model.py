@@ -3,11 +3,10 @@ import matplotlib.pyplot as mpl
 import numpy as np
 import pytest
 from edges_cal.modelling import Polynomial
-from yabf import Component, Parameter, run_map
-from yabf.samplers.polychord import polychord
-
 from edges_estimate.likelihoods import PartialLinearModel
 from edges_estimate.plots import get_evidence
+from yabf import Component, Parameter, run_map
+from yabf.samplers.polychord import polychord
 
 
 @attr.s(kw_only=True)
@@ -64,9 +63,9 @@ def scaled_plm():
     sinx = Sin(x=x, params={"t": {"fiducial": 10, "min": -10, "max": 30}})
     scale = Scale(x=x, params={"scale": {"fiducial": 1, "min": 0.1, "max": 30}})
 
-    y = (
-        linear_model() + sinx()["power"] + np.random.normal(scale=0.01, size=len(x))
-    ) / scale()["scale"]
+    y = (linear_model() + sinx()["power"] + np.random.normal(scale=0.01, size=len(x))) / scale()[
+        "scale"
+    ]
 
     def vfunc(ctx, data):
         return ctx["scale"] ** 2 * data["data_variance"]
@@ -128,17 +127,13 @@ def test_correct_result_scaled(scaled_plm, plt):
             (fit.evaluate()) / ctx["scale"],
             label="linear_model",
         )
-        ax[0, 0].plot(
-            scaled_plm.linear_model.x, (ctx["power"]) / ctx["scale"], label="sinx"
-        )
+        ax[0, 0].plot(scaled_plm.linear_model.x, (ctx["power"]) / ctx["scale"], label="sinx")
 
         ax[1, 0].plot(scaled_plm.linear_model.x, data)
         ax[1, 0].plot(scaled_plm.linear_model.x, fit.evaluate())
 
         ax[2, 0].plot(scaled_plm.linear_model.x, fit.residual)
-        ax[2, 0].fill_between(
-            x, -np.sqrt(var) * np.ones_like(x), np.sqrt(var) * np.ones_like(x)
-        )
+        ax[2, 0].fill_between(x, -np.sqrt(var) * np.ones_like(x), np.sqrt(var) * np.ones_like(x))
 
         ax[0, 0].legend()
 
@@ -153,17 +148,13 @@ def test_correct_result_scaled(scaled_plm, plt):
             (fit2.evaluate()) / ctx2["scale"],
             label="linear_model",
         )
-        ax[0, 1].plot(
-            scaled_plm.linear_model.x, (ctx2["power"]) / ctx2["scale"], label="sinx"
-        )
+        ax[0, 1].plot(scaled_plm.linear_model.x, (ctx2["power"]) / ctx2["scale"], label="sinx")
 
         ax[1, 1].plot(scaled_plm.linear_model.x, data2)
         ax[1, 1].plot(scaled_plm.linear_model.x, fit2.evaluate())
 
         ax[2, 1].plot(scaled_plm.linear_model.x, fit2.residual)
-        ax[2, 1].fill_between(
-            x, -np.sqrt(var2) * np.ones_like(x), np.sqrt(var2) * np.ones_like(x)
-        )
+        ax[2, 1].fill_between(x, -np.sqrt(var2) * np.ones_like(x), np.sqrt(var2) * np.ones_like(x))
 
     assert out.success
     np.testing.assert_allclose(out.x[0], 10, atol=0.1)
@@ -192,7 +183,7 @@ def test_correct_result_larger_model_scaled(scaled_large_plm):
     np.testing.assert_allclose(fit.model_parameters[-1], 0, rtol=0, atol=0.1)
 
 
-@pytest.mark.slow
+@pytest.mark.slow()
 def test_polychord_evidence(simple_plm, large_plm, tmp_path_factory):
     direc = tmp_path_factory
 
@@ -218,7 +209,7 @@ def test_polychord_evidence(simple_plm, large_plm, tmp_path_factory):
     assert large_lnz <= correct_lnz
 
 
-@pytest.mark.slow
+@pytest.mark.slow()
 def test_polychord_evidence_scaled(scaled_plm, scaled_large_plm, tmp_path):
     direc = tmp_path / "cache"
 
