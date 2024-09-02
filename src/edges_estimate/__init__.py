@@ -1,15 +1,15 @@
 """Top-level package for edges-estimate."""
 
-from .calibration import *
-from .eor_models import *
-from .foregrounds import *
-from .likelihoods import *
+from importlib.metadata import PackageNotFoundError, version
 
 try:
-    from importlib.metadata import PackageNotFoundError, version
-except ImportError:
-    from importlib_metadata import PackageNotFoundError, version
+    __version__ = version(__name__)
+except PackageNotFoundError:
+    # package is not installed
+    __version__ = "unknown"
+finally:
+    del version, PackageNotFoundError
 
-__author__ = """Steven Murray"""
-__email__ = "steven.g.murray@asu.edu"
-__version__ = version("edges_estimate")
+from . import foregrounds, likelihoods
+from .calibration import AntennaQ, CalibratorQ
+from .eor_models import AbsorptionProfile, phenom_model

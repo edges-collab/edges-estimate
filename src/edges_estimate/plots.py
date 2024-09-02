@@ -1,3 +1,5 @@
+"""Make plots."""
+
 import numpy as np
 from getdist import loadMCSamples
 from matplotlib import pyplot as plt
@@ -6,15 +8,14 @@ from yabf import LikelihoodContainer, load_likelihood_from_yaml
 
 
 def get_evidence(root: str):
-    """Read the Bayesian evidence of the Polychord run
+    """Read the Bayesian evidence of the Polychord run.
 
     Parameters
     ----------
     root
         The root file path of the run without the extension
     """
-
-    with open(root + ".stats") as f:
+    with open(f"{root}.stats") as f:
         for line in f:
             if line.startswith("log(Z)"):
                 evidence = float(line.split("=")[1].lstrip().split(" ")[0])
@@ -22,16 +23,12 @@ def get_evidence(root: str):
     return evidence
 
 
-def get_models_from_mcsamples(
-    mcsamples, lk_names, lk=None, extras=None, n=None, progress=True
-):
-    if type(mcsamples) == str:
+def get_models_from_mcsamples(mcsamples, lk_names, lk=None, extras=None, n=None, progress=True):
+    if isinstance(mcsamples, str):
         mcsamples = loadMCSamples(mcsamples)
 
     if n is not None:
-        samples = mcsamples.samples[
-            np.random.choice(mcsamples.samples.shape[0], size=n)
-        ]
+        samples = mcsamples.samples[np.random.choice(mcsamples.samples.shape[0], size=n)]
     else:
         samples = mcsamples.samples
 
@@ -55,7 +52,6 @@ def get_models_from_mcsamples(
             model = {lk_names[0]: model}
 
         for lk_name in lk_names:
-
             if lk_name not in out:
                 out[lk_name] = {}
 
@@ -81,9 +77,5 @@ def make_residual_plot_shaded(models, freqs=None, temps=None, labels=None, color
         q = np.quantile(model, q=(0.04, 0.16, 0.5, 0.84, 0.96), axis=0)
 
         plt.plot(freq, temp - q[2], color=color or f"C{i}", label=label)
-        plt.fill_between(
-            freq, temp - q[1], temp - q[3], color=color or f"C{i}", alpha=0.6
-        )
-        plt.fill_between(
-            freq, temp - q[0], temp - q[4], color=color or f"C{i}", alpha=0.4
-        )
+        plt.fill_between(freq, temp - q[1], temp - q[3], color=color or f"C{i}", alpha=0.6)
+        plt.fill_between(freq, temp - q[0], temp - q[4], color=color or f"C{i}", alpha=0.4)
