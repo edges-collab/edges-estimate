@@ -3,7 +3,7 @@ from pathlib import Path
 import hickle
 import numpy as np
 import pytest
-from edges_analysis.analysis.calibrate import LabCalibration
+from edges_analysis.calibration.calibrate import LabCalibration
 from edges_cal import Calibrator
 from edges_cal.modelling import LinLog
 from edges_estimate.eor_models import AbsorptionProfile

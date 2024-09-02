@@ -6,9 +6,8 @@ import attr
 import numpy as np
 from attr import validators as vld
 from cached_property import cached_property
-from edges_cal import receiver_calibration_func as rcf
-from edges_cal.cal_coefficients import CalibrationObservation
-from edges_cal.receiver_calibration_func import power_ratio
+from edges_cal import noise_waves as nw
+from edges_cal.calobs import CalibrationObservation
 from edges_cal.s11 import LoadS11, Receiver
 from edges_io.logging import logger
 from yabf import Component, ParameterVector
@@ -138,7 +137,7 @@ class CalibratorQ(_CalibrationQ):
     @cached_property
     def Ks(self):
         return {
-            name: rcf.get_K(self.s11_models["lna"], self.s11_models[name])
+            name: nw.get_K(self.s11_models["lna"], self.s11_models[name])
             for name in self.s11_models
             if name != "lna"
         }
@@ -150,7 +149,7 @@ class CalibratorQ(_CalibrationQ):
         for name, source in self.calobs._loads.items():
             temp_ant = source.spectrum.temp_ave
 
-            a, b = rcf.get_linear_coefficients_from_K(
+            a, b = nw.get_linear_coefficients_from_K(
                 self.Ks[name],
                 scale(self.freq_recentred),
                 offset(self.freq_recentred),
@@ -198,7 +197,7 @@ class AntennaQ(_CalibrationQ):
         temp_ant = sum(v for k, v in ctx.items() if k.endswith("spectrum"))
         gamma_ant = self.antenna.get_s11_correction_model()(self.freq)
 
-        return power_ratio(
+        return nw.power_ratio(
             scale=scale,
             offset=offset,
             temp_cos=tc,

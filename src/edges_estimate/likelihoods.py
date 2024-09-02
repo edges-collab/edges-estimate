@@ -11,13 +11,12 @@ import numpy as np
 from astropy import units as u
 from cached_property import cached_property
 from edges_cal import CalibrationObservation
-from edges_cal import receiver_calibration_func as rcf
+from edges_cal import noise_waves as nw
 from edges_cal import types as tp
 from edges_cal.modelling import (
     CompositeModel,
     LinLog,
     Model,
-    NoiseWaves,
     Polynomial,
     UnitTransform,
 )
@@ -459,7 +458,7 @@ class NoiseWaveCoefficients(Component):
         if not self.as_dict:
             return np.hstack(
                 tuple(
-                    rcf.get_K(
+                    nw.get_K(
                         gamma_rec=ctx["rcv_gamma" if src != "ant" else "rcvant_gamma"],
                         gamma_ant=ctx[f"{src}_gamma"],
                     )
@@ -467,7 +466,7 @@ class NoiseWaveCoefficients(Component):
                 )
             )
         return {
-            src: rcf.get_K(
+            src: nw.get_K(
                 gamma_rec=ctx["rcv_gamma" if src != "ant" else "rcvant_gamma"],
                 gamma_ant=ctx[f"{src}_gamma"],
             )
@@ -477,7 +476,7 @@ class NoiseWaveCoefficients(Component):
 
 @attr.s(frozen=True, kw_only=True)
 class NoiseWaveLikelihood:
-    nw_model: NoiseWaves = attr.ib()
+    nw_model: nw.NoiseWaves = attr.ib()
     data: dict = attr.ib()
     sig_by_tns: bool = attr.ib(default=True)
     t_ns_params: ParamVec = attr.ib()
@@ -602,7 +601,7 @@ class NoiseWaveLikelihood:
         if source_factors is None:
             source_factors = (1,) * len(loads)
 
-        nw_model = NoiseWaves.from_calobs(calobs, loads=loads, cterms=cterms, wterms=wterms)
+        nw_model = nw.NoiseWaves.from_calobs(calobs, loads=loads, cterms=cterms, wterms=wterms)
 
         raw_bases = nw_model.get_linear_model(with_k=False).basis
 
@@ -795,7 +794,7 @@ class NoiseWaveLikelihood:
         else:
             rcv = labcal.calobs.receiver_s11(freq * u.MHz)
 
-        return rcf.get_linear_coefficients(
+        return nw.get_linear_coefficients(
             gamma_ant=gamma_ant,
             gamma_rec=rcv,
             sca=tns / labcal.calobs.t_load_ns,
@@ -902,7 +901,7 @@ class NoiseWavesPlusFG:
         if with_k:
             K = np.hstack(
                 tuple(
-                    rcf.get_K(
+                    nw.get_K(
                         gamma_rec=self.gamma_rec(self._freq(name)),
                         gamma_ant=self.gamma_src[name](self._freq(name)),
                     )
@@ -1001,7 +1000,7 @@ class NoiseWavesPlusFG:
         out = self.linear_model(parameters=parameters)
         return out[self._get_idx(src)]
 
-    def get_fitted(self, data: np.ndarray, weights: np.ndarray | None = None) -> NoiseWaves:
+    def get_fitted(self, data: np.ndarray, weights: np.ndarray | None = None) -> nw.NoiseWaves:
         """Get a new noise wave model with fitted parameters."""
         fit = self.linear_model.fit(ydata=data, weights=weights)
         return attr.evolve(self, parameters=fit.model_parameters)
@@ -1298,7 +1297,7 @@ class DataCalibrationLikelihood:
             noise_wave_coeffs = ()
 
         k0 = {
-            src: rcf.get_K(
+            src: nw.get_K(
                 gamma_ant=gamma_src(nwfg_model._freq(src)),
                 gamma_rec=nwfg_model.gamma_rec(nwfg_model._freq(src)),
             )[0]
