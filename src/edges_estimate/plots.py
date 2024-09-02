@@ -5,18 +5,16 @@ from tqdm import tqdm
 from yabf import LikelihoodContainer, load_likelihood_from_yaml
 
 
-def get_evidence(mcsamplesr):
-
+def get_evidence(root: str):
     """Read the Bayesian evidence of the Polychord run
-    ------------------------------------------------
 
-    Parameters:
-    ------------
-    mcsamplesr: str
-    The root file path of the run without the extension
+    Parameters
+    ----------
+    root
+        The root file path of the run without the extension
     """
 
-    with open(mcsamplesr + ".stats") as f:
+    with open(root + ".stats") as f:
         for line in f:
             if line.startswith("log(Z)"):
                 evidence = float(line.split("=")[1].lstrip().split(" ")[0])

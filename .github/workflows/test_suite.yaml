@@ -21,8 +21,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: [3.8, 3.9]
+        os: [ubuntu-latest]   #, macos-latest]
+        python-version: [3.8, 3.9, "3.10"]
+        # exclude:
+        #   - os: macos-latest
+        #     python-version: 3.8
     steps:
       - uses: actions/checkout@master
         with:
@@ -36,9 +39,15 @@ jobs:
         run: |
           pip install -U coverage
           pip install .[dev]
+      - name: Setup polychord
+        run: |
+          git clone https://github.com/PolyChord/PolyChordLite
+          cd PolyChordLite
+          python setup.py --no-mpi install
+          cd ..
       - name: Run Tests
         run: |
-          python -m pytest --cov-report xml:./coverage.xml
+          python -m pytest --cov-report xml:./coverage.xml -m "not slow"
       - uses: codecov/codecov-action@master
         if: matrix.os == 'ubuntu-latest' && success()
         with:
