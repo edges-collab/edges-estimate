@@ -16,7 +16,7 @@ class AbsorptionProfile(Component):
     provides = ["eor_spectrum"]
 
     base_parameters = [
-        Parameter("A", 0.5, min=0, latex=r"a_{21}"),
+        Parameter("amp", 0.5, min=0, latex=r"a_{21}"),
         Parameter("tau", 7, min=0, latex=r"\tau"),
         Parameter("w", 17.0, min=0),
         Parameter("nu0", 75, min=0, latex=r"\nu_0"),
