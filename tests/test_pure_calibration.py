@@ -7,13 +7,11 @@ model, the extra parameters are estimated at zero. Then it goes on to compare th
 of each of these models, ensuring that the smaller model has a better BIC.
 """
 
-import pytest
-
 import numpy as np
+import pytest
+from edges_estimate.likelihoods import NoiseWaveLikelihood
 from numdifftools import Hessian
 from yabf import run_map
-
-from edges_estimate.likelihoods import NoiseWaveLikelihood
 
 
 @pytest.fixture(scope="module")
@@ -74,8 +72,6 @@ def test_pure_sim_bic(fid_lk, fid_res, larger_lk, larger_res):
     nparams = larger_lk.partial_linear_model.linear_model.n_terms + len(
         larger_lk.partial_linear_model.child_active_params
     )
-    larger_bic = (
-        nparams * len(data) - 2 * larger_lk.partial_linear_model(params=larger_res.x)[0]
-    )
+    larger_bic = nparams * len(data) - 2 * larger_lk.partial_linear_model(params=larger_res.x)[0]
 
     assert fid_bic < larger_bic

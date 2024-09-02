@@ -1,15 +1,14 @@
-import pytest
+from pathlib import Path
 
 import hickle
 import numpy as np
-from edges_analysis.analysis.calibrate import LabCalibration
+import pytest
+from edges_analysis.calibration.calibrate import LabCalibration
 from edges_cal import Calibrator
 from edges_cal.modelling import LinLog
-from pathlib import Path
-from scipy import stats
-
 from edges_estimate.eor_models import AbsorptionProfile
 from edges_estimate.foregrounds import DampedOscillations, LogPoly
+from scipy import stats
 
 
 @pytest.fixture(scope="session")
@@ -24,9 +23,7 @@ def calobs(data_path) -> Calibrator:
 
 @pytest.fixture(scope="session")
 def labcal(calobs, data_path) -> Calibrator:
-    return LabCalibration.from_s11_files(
-        calobs=calobs, s11_files=sorted(data_path.glob("*.s1p"))
-    )
+    return LabCalibration.from_s11_files(calobs=calobs, s11_files=sorted(data_path.glob("*.s1p")))
 
 
 @pytest.fixture(scope="session")
@@ -37,9 +34,7 @@ def calobs12(calobs) -> Calibrator:
 
 @pytest.fixture(scope="session")
 def labcal12(calobs12, data_path) -> Calibrator:
-    return LabCalibration.from_s11_files(
-        calobs=calobs12, s11_files=sorted(data_path.glob("*.s1p"))
-    )
+    return LabCalibration.from_s11_files(calobs=calobs12, s11_files=sorted(data_path.glob("*.s1p")))
 
 
 @pytest.fixture(scope="session")
@@ -75,12 +70,12 @@ def fiducial_eor(calobs):
     )
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture()
 def fiducial_fg():
     return LinLog(n_terms=5, parameters=[2000, 10, -10, 5, -5])
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture()
 def fiducial_fg_logpoly():
     return LogPoly(
         freqs=np.linspace(50, 100, 100),
@@ -93,7 +88,7 @@ def fiducial_fg_logpoly():
     )
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture()
 def fiducial_dampedoscillations():
     return DampedOscillations(
         freqs=np.linspace(50, 100, 100),
