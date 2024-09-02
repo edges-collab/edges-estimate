@@ -1,6 +1,7 @@
 """
 Components for performing calibration on raw data.
 """
+
 import attr
 import logging
 import numpy as np
@@ -82,7 +83,8 @@ class _CalibrationQ(Component):
     @cached_property
     def data_mask(self):
         """The data itself is averaged_Q from the LoadSpectrum, which may involve different
-        frequencies than the calibration itself. Here we get which elements to actually use."""
+        frequencies than the calibration itself. Here we get which elements to actually use.
+        """
         mask = []
         for i, flag in enumerate(self.calobs.open.spectrum.freq.mask):
             if not flag:

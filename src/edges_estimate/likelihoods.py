@@ -181,6 +181,7 @@ class PartialLinearModel(Chi2, Likelihood):
     But the `H` matrix is idempotent, so :math:`Hd - HHd = Hd - Hd = 0`. So we are left
     with the first term only.
     """
+
     linear_model: Model = attr.ib()
     variance_func: Callable | None = attr.ib(default=None)
     data_func: Callable | None = attr.ib(default=None)
@@ -674,18 +675,21 @@ class NoiseWaveLikelihood:
         data = {
             "q": np.concatenate(
                 tuple(
-                    simulate_q_from_calobs(calobs, name)
-                    + (
-                        np.random.normal(
-                            scale=np.sqrt(
-                                load.spectrum.variance_Q / load.spectrum.n_integrations
+                    (
+                        simulate_q_from_calobs(calobs, name)
+                        + (
+                            np.random.normal(
+                                scale=np.sqrt(
+                                    load.spectrum.variance_Q
+                                    / load.spectrum.n_integrations
+                                )
                             )
+                            if add_noise
+                            else 0
                         )
-                        if add_noise
-                        else 0
+                        if name in as_sim
+                        else load.spectrum.averaged_Q
                     )
-                    if name in as_sim
-                    else load.spectrum.averaged_Q
                     for name, load in loads.items()
                 )
             ),
@@ -960,23 +964,29 @@ class NoiseWavesPlusFG:
         models = {
             "tunc": Polynomial(
                 n_terms=self.w_terms,
-                parameters=self.parameters[: self.w_terms]
-                if self.parameters is not None
-                else None,
+                parameters=(
+                    self.parameters[: self.w_terms]
+                    if self.parameters is not None
+                    else None
+                ),
                 transform=transform,
             ),
             "tcos": Polynomial(
                 n_terms=self.w_terms,
-                parameters=self.parameters[self.w_terms : 2 * self.w_terms]
-                if self.parameters is not None
-                else None,
+                parameters=(
+                    self.parameters[self.w_terms : 2 * self.w_terms]
+                    if self.parameters is not None
+                    else None
+                ),
                 transform=transform,
             ),
             "tsin": Polynomial(
                 n_terms=self.w_terms,
-                parameters=self.parameters[2 * self.w_terms : 3 * self.w_terms]
-                if self.parameters is not None
-                else None,
+                parameters=(
+                    self.parameters[2 * self.w_terms : 3 * self.w_terms]
+                    if self.parameters is not None
+                    else None
+                ),
                 transform=transform,
             ),
             "tload": Polynomial(
@@ -1226,8 +1236,7 @@ class DataCalibrationLikelihood:
 
         return np.concatenate(
             [
-                data["data_variance"][src]
-                * (field_tns**2 if src == "ant" else tns**2)
+                data["data_variance"][src] * (field_tns**2 if src == "ant" else tns**2)
                 for src in self.src_names
             ]
         )
@@ -1357,9 +1366,11 @@ class DataCalibrationLikelihood:
         }
 
         q = {
-            name: simulate_q_from_calobs(calobs, name)
-            if name in as_sim
-            else load.spectrum.averaged_Q
+            name: (
+                simulate_q_from_calobs(calobs, name)
+                if name in as_sim
+                else load.spectrum.averaged_Q
+            )
             for name, load in loads.items()
         }
 
