@@ -60,7 +60,7 @@ class _PhysicalBase(Foreground):
         b = [p[f"b{i}"] for i in range(4)]
         alpha = p["ion_spec_index"]
 
-        x = np.exp(-b[3] * self.f ** alpha)
+        x = np.exp(-b[3] * self.f**alpha)
         return b[0] * self.f ** (b[1] + b[2] * np.log(self.f) - 2.5) * x, x
 
 
@@ -90,7 +90,7 @@ class PhysicalSmallIonDepth(_PhysicalBase):
     def model(self, **p):
         first_term, x = super().model(p)
         b4 = p["b4"]
-        return first_term + b4 / self.f ** 2
+        return first_term + b4 / self.f**2
 
     # Possible derived quantities
     def Te(self, ctx, **params):
@@ -104,16 +104,16 @@ class PhysicalLin(Foreground):
     """
 
     base_parameters = [Parameter("p0", fiducial=1750, latex=r"p_0")] + [
-        Parameter(f"p{i}", fiducial=0, latex=fr"p_{i}") for i in range(1, 5)
+        Parameter(f"p{i}", fiducial=0, latex=rf"p_{i}") for i in range(1, 5)
     ]
 
     def model(self, **p):
         p = [p[f"p{i}"] for i in range(5)]
 
         return (
-            self.f ** -2.5 * (p[0] + np.log(self.f) * (p[1] + p[2] * np.log(self.f)))
-            + p[3] * self.f ** -4.5
-            + p[4] * self.f ** -2
+            self.f**-2.5 * (p[0] + np.log(self.f) * (p[1] + p[2] * np.log(self.f)))
+            + p[3] * self.f**-4.5
+            + p[4] * self.f**-2
         )
 
     # Possible derived parameters
@@ -149,7 +149,7 @@ class IonContrib(Foreground):
     ]
 
     def model(self, **p):
-        return p["absorption"] * self.f ** -4.5 + p["emissivity"] * self.f ** -2
+        return p["absorption"] * self.f**-4.5 + p["emissivity"] * self.f**-2
 
 
 @attr.s
@@ -194,7 +194,7 @@ class LinLog(Foreground):
 
         # First create the parameters.
         for i in range(2, self.poly_order):
-            p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
+            p.append(Parameter(f"p{i}", 0, latex=rf"p_{i}"))
         return tuple(p)
 
     @cached_property
@@ -203,7 +203,7 @@ class LinLog(Foreground):
 
     @cached_property
     def basis(self):
-        return np.array([self.logf ** i for i in range(self.poly_order)])
+        return np.array([self.logf**i for i in range(self.poly_order)])
 
     def model(self, **p):
         pp = [p[f"p{i}"] for i in range(self.poly_order)]
@@ -276,7 +276,7 @@ class LinPoly(LinLog):
             if key == "beta":
                 continue
             i = int(key[1:])
-            terms.append(val * self.f ** i)
+            terms.append(val * self.f**i)
 
         return np.sum(terms, axis=0) * self.f ** p["beta"]
 
@@ -299,7 +299,7 @@ class Bias(Component):
 
         # First create the parameters.
         for i in range(1, self.poly_order):
-            p.append(Parameter(f"b{i}", 0, latex=fr"b_{i}"))
+            p.append(Parameter(f"b{i}", 0, latex=rf"b_{i}"))
         return tuple(p)
 
     def evaluate_poly(self, **params):
@@ -310,7 +310,7 @@ class Bias(Component):
         res = 0
         for i in range(self.poly_order):
             p = params[f"b{i}"]
-            res += p * x ** i
+            res += p * x**i
 
         return res
 
@@ -349,7 +349,7 @@ class LogPoly(Foreground):
 
         # First create the parameters.
         for i in range(1, self.poly_order + 1):
-            p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
+            p.append(Parameter(f"p{i}", 0, latex=rf"p_{i}"))
         return tuple(p)
 
     @cached_property
@@ -358,7 +358,7 @@ class LogPoly(Foreground):
 
     @cached_property
     def basis(self):
-        return np.array([self.logf ** i for i in range(self.poly_order + 1)])
+        return np.array([self.logf**i for i in range(self.poly_order + 1)])
 
     def model(self, **p):
         pp = [p[f"p{i}"] for i in range(self.poly_order + 1)]
