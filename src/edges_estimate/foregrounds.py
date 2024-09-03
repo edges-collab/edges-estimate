@@ -1,21 +1,24 @@
-"""
-Models of the foregrounds
-"""
+"""Models of the foregrounds."""
+
 import attr
 import numpy as np
 from cached_property import cached_property
 from yabf import Component, Parameter
 
-def damped_oscillation_model(freqs, P, b, amp_sin, amp_cos):
-    """really bad and unexplanable damped sinusoid."""
 
-    phase = 2 * np.pi * (freqs /P)
-    f_c = freqs[0] + (freqs[-1] - freqs[0])/2
-    return (freqs/f_c) ** b * (amp_sin* np.sin(phase) + amp_cos* np.cos(phase))
+def damped_oscillation_model(freqs, period, damping_index, amp_sin, amp_cos):
+    """Damped sinusoid systematic model from Sims+2021."""
+    phase = 2 * np.pi * (freqs / period)
+    f_c = freqs[0] + (freqs[-1] - freqs[0]) / 2
+    return (freqs / f_c) ** damping_index * (amp_sin * np.sin(phase) + amp_cos * np.cos(phase))
+
 
 @attr.s(frozen=True)
 class Foreground(Component):
-    """Base class for all foreground models, don't use this directly!"""
+    """Base class for all foreground models.
+
+    Don't use this directly.
+    """
 
     freqs: np.ndarray = attr.ib(kw_only=True, eq=attr.cmp_using(eq=np.array_equal))
     nuc = attr.ib(75.0, kw_only=True, converter=float)
@@ -60,16 +63,15 @@ class _PhysicalBase(Foreground):
         b = [p[f"b{i}"] for i in range(4)]
         alpha = p["ion_spec_index"]
 
-        x = np.exp(-b[3] * self.f ** alpha)
+        x = np.exp(-b[3] * self.f**alpha)
         return b[0] * self.f ** (b[1] + b[2] * np.log(self.f) - 2.5) * x, x
 
 
 class PhysicalHills(_PhysicalBase):
-    """
-    Eq 6. from Hills et al.
-    """
+    """Eq 6. from Hills et al."""
 
-    base_parameters = _PhysicalBase.base_parameters + [
+    base_parameters = [
+        *_PhysicalBase.base_parameters,
         Parameter("Te", 1000, min=0, max=5000, latex=r"T_e [K]"),
     ]
 
@@ -79,83 +81,75 @@ class PhysicalHills(_PhysicalBase):
 
 
 class PhysicalSmallIonDepth(_PhysicalBase):
-    """
-    Eq. 7 from Hills et al.
-    """
+    """Eq. 7 from Hills et al."""
 
-    base_parameters = _PhysicalBase.base_parameters + [
-        Parameter("b4", 0, latex=r"b_4 [K]")
-    ]
+    base_parameters = [*_PhysicalBase.base_parameters, Parameter("b4", 0, latex=r"b_4 [K]")]
 
     def model(self, **p):
-        first_term, x = super().model(p)
+        first_term, _ = super().model(p)
         b4 = p["b4"]
-        return first_term + b4 / self.f ** 2
+        return first_term + b4 / self.f**2
 
     # Possible derived quantities
     def Te(self, ctx, **params):
-        """Approximate value of Te in the small-ion-depth limit"""
+        """Approximate value of Te in the small-ion-depth limit."""
         return params["b4"] / params["b3"]
 
 
 class PhysicalLin(Foreground):
-    """
-    Eq. 8 from Hills et al.
-    """
+    """Eq. 8 from Hills et al."""
 
     base_parameters = [Parameter("p0", fiducial=1750, latex=r"p_0")] + [
-        Parameter(f"p{i}", fiducial=0, latex=fr"p_{i}") for i in range(1, 5)
+        Parameter(f"p{i}", fiducial=0, latex=rf"p_{i}") for i in range(1, 5)
     ]
 
     def model(self, **p):
         p = [p[f"p{i}"] for i in range(5)]
 
         return (
-            self.f ** -2.5 * (p[0] + np.log(self.f) * (p[1] + p[2] * np.log(self.f)))
-            + p[3] * self.f ** -4.5
-            + p[4] * self.f ** -2
+            self.f**-2.5 * (p[0] + np.log(self.f) * (p[1] + p[2] * np.log(self.f)))
+            + p[3] * self.f**-4.5
+            + p[4] * self.f**-2
         )
 
     # Possible derived parameters
     def b0(self, ctx, **p):
-        """The corresponding b0 from PhysicalHills"""
+        """The corresponding b0 from PhysicalHills."""
         return p["p0"]
 
     def b1(self, ctx, **p):
-        """The corresponding b1 from PhysicalHills"""
+        """The corresponding b1 from PhysicalHills."""
         return p["p1"] / p["p0"]
 
     def b2(self, ctx, **p):
-        """The corresponding b2 from PhysicalHills"""
+        """The corresponding b2 from PhysicalHills."""
         return p["p2"] / p["p0"] - self.b1(ctx, **p) ** 2 / 2
 
     def b3(self, ctx, **p):
-        """The corresponding b3 from PhysicalHills"""
+        """The corresponding b3 from PhysicalHills."""
         return -p["p3"] / p["p0"]
 
     def b4(self, ctx, **p):
-        """The corresponding b4 from PhysicalHills"""
+        """The corresponding b4 from PhysicalHills."""
         return p["p4"]
 
 
 @attr.s
 class IonContrib(Foreground):
-    """
-    Absorption and emission due to the ionosphere
-    """
+    """Absorption and emission due to the ionosphere."""
 
     base_parameters = [Parameter("absorption", fiducial=0, latex=r"\tau")] + [
         Parameter("emissivity", fiducial=0, latex=r"T_{elec}")
     ]
 
     def model(self, **p):
-        return p["absorption"] * self.f ** -4.5 + p["emissivity"] * self.f ** -2
+        return p["absorption"] * self.f**-4.5 + p["emissivity"] * self.f**-2
 
 
 @attr.s
 class LinLog(Foreground):
     """
-    LinLog model from Memo #122
+    LinLog model from Memo #122.
 
     .. note:: the model there is slightly ambiguous. Actually taking the Taylor Expansion
               of the ExpLog model makes it clear that a_1 (here p_1) should be
@@ -175,12 +169,11 @@ class LinLog(Foreground):
     use_p1 = attr.ib(False, converter=bool)
 
     def __attrs_post_init__(self):
+        """Perform validation after all parameters are set."""
         super().__attrs_post_init__()
 
         if not self.use_p1 and "p1" in self.child_active_params:
-            raise ValueError(
-                "You are attempting to fit p1, but it won't affect anything!"
-            )
+            raise ValueError("You are attempting to fit p1, but it won't affect anything!")
 
     @cached_property
     def base_parameters(self):
@@ -193,8 +186,7 @@ class LinLog(Foreground):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        for i in range(2, self.poly_order):
-            p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
+        p.extend(Parameter(f"p{i}", 0, latex=rf"p_{i}") for i in range(2, self.poly_order))
         return tuple(p)
 
     @cached_property
@@ -203,7 +195,7 @@ class LinLog(Foreground):
 
     @cached_property
     def basis(self):
-        return np.array([self.logf ** i for i in range(self.poly_order)])
+        return np.array([self.logf**i for i in range(self.poly_order)])
 
     def model(self, **p):
         pp = [p[f"p{i}"] for i in range(self.poly_order)]
@@ -237,9 +229,7 @@ class DampedOscillations(Foreground):
 
     def model(self, **p):
         phase = 2 * np.pi * self.freqs / p["P"]
-        return (self.f) ** p["b"] * (
-            p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase)
-        )
+        return (self.f) ** p["b"] * (p["amp_sin"] * np.sin(phase) + p["amp_cos"] * np.cos(phase))
 
 
 @attr.s
@@ -276,7 +266,7 @@ class LinPoly(LinLog):
             if key == "beta":
                 continue
             i = int(key[1:])
-            terms.append(val * self.f ** i)
+            terms.append(val * self.f**i)
 
         return np.sum(terms, axis=0) * self.f ** p["beta"]
 
@@ -298,8 +288,7 @@ class Bias(Component):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        for i in range(1, self.poly_order):
-            p.append(Parameter(f"b{i}", 0, latex=fr"b_{i}"))
+        p.extend(Parameter(f"b{i}", 0, latex=rf"b_{i}") for i in range(1, self.poly_order))
         return tuple(p)
 
     def evaluate_poly(self, **params):
@@ -307,30 +296,26 @@ class Bias(Component):
         if self.log:
             x = np.log(x)
 
-        res = 0
-        for i in range(self.poly_order):
-            p = params[f"b{i}"]
-            res += p * x ** i
-
-        return res
+        return sum(params[f"b{i}"] * x**i for i in range(self.poly_order))
 
     def calculate(self, ctx, **params):
         bias = self.evaluate_poly(**params)
 
-        for key, val in ctx.items():
+        for key in ctx:
             if key.endswith(self.kind):
                 if self.additive:
                     ctx[key] += bias
                     break  # only add to one thing, otherwise it's doubling up.
-                else:
-                    ctx[key] *= bias
+                ctx[key] *= bias
 
 
 @attr.s
 class LogPoly(Foreground):
     """
-    LogPoly model from Sims et.al. 2020 (Equation 18)
-    T_{Fg} = 10^sum(d_i*log10(ν/ν_0)^i)_{i=0 to N}
+    LogPoly model from Sims et.al. 2020 (Equation 18).
+
+    T_{Fg} = 10^sum(d_i*log10(nu/nu_0)^i)_{i=0 to N}
+
     Parameters
     ----------
     poly_order : int
@@ -348,8 +333,7 @@ class LogPoly(Foreground):
         assert self.poly_order >= 1, "poly_order must be >= 1"
 
         # First create the parameters.
-        for i in range(1, self.poly_order + 1):
-            p.append(Parameter(f"p{i}", 0, latex=fr"p_{i}"))
+        p.extend(Parameter(f"p{i}", 0, latex=rf"p_{i}") for i in range(1, self.poly_order + 1))
         return tuple(p)
 
     @cached_property
@@ -358,7 +342,7 @@ class LogPoly(Foreground):
 
     @cached_property
     def basis(self):
-        return np.array([self.logf ** i for i in range(self.poly_order + 1)])
+        return np.array([self.logf**i for i in range(self.poly_order + 1)])
 
     def model(self, **p):
         pp = [p[f"p{i}"] for i in range(self.poly_order + 1)]
