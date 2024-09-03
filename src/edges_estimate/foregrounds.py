@@ -6,11 +6,11 @@ from cached_property import cached_property
 from yabf import Component, Parameter
 
 
-def damped_oscillation_model(freqs, P, b, amp_sin, amp_cos):
-    """Really bad and unexplanable damped sinusoid."""
-    phase = 2 * np.pi * (freqs / P)
+def damped_oscillation_model(freqs, period, damping_index, amp_sin, amp_cos):
+    """Damped sinusoid systematic model from Sims+2019."""
+    phase = 2 * np.pi * (freqs / period)
     f_c = freqs[0] + (freqs[-1] - freqs[0]) / 2
-    return (freqs / f_c) ** b * (amp_sin * np.sin(phase) + amp_cos * np.cos(phase))
+    return (freqs / f_c) ** damping_index * (amp_sin * np.sin(phase) + amp_cos * np.cos(phase))
 
 
 @attr.s(frozen=True)
