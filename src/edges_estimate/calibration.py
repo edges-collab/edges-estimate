@@ -1,29 +1,27 @@
-"""
-Components for performing calibration on raw data.
-"""
-import attr
+"""Components for performing calibration on raw data."""
+
 import logging
+
+import attr
 import numpy as np
 from attr import validators as vld
 from cached_property import cached_property
-from edges_cal import receiver_calibration_func as rcf
-from edges_cal.cal_coefficients import CalibrationObservation
-from edges_cal.receiver_calibration_func import power_ratio
+from edges_cal import noise_waves as nw
+from edges_cal.calobs import CalibrationObservation
 from edges_cal.s11 import LoadS11, Receiver
 from edges_io.logging import logger
-from yabf import Component, Parameter, ParameterVector
+from yabf import Component, ParameterVector
 
 
 def _log_level_converter(val):
     if isinstance(val, int):
         return val
-    elif isinstance(val, str):
-        try:
-            return getattr(logging, val.upper())
-        except AttributeError:
-            raise ValueError(f"{val} is not an available logging level")
-    else:
+    if not isinstance(val, str):
         raise TypeError("log_level must be int or str")
+    try:
+        return getattr(logging, val.upper())
+    except AttributeError as e:
+        raise ValueError(f"{val} is not an available logging level") from e
 
 
 @attr.s(frozen=True, cache_hash=True)
@@ -31,12 +29,8 @@ class _CalibrationQ(Component):
     """Base Component providing calibration Q_P."""
 
     path = attr.ib(kw_only=True, default="", validator=vld.instance_of(str))
-    calobs_args = attr.ib(
-        kw_only=True, default={}, converter=dict, validator=vld.instance_of(dict)
-    )
-    _log_level = attr.ib(
-        kw_only=True, default=logging.WARNING, converter=_log_level_converter
-    )
+    calobs_args = attr.ib(kw_only=True, default={}, converter=dict, validator=vld.instance_of(dict))
+    _log_level = attr.ib(kw_only=True, default=logging.WARNING, converter=_log_level_converter)
     _calobs = attr.ib(
         kw_only=True,
         default=None,
@@ -81,14 +75,16 @@ class _CalibrationQ(Component):
 
     @cached_property
     def data_mask(self):
-        """The data itself is averaged_Q from the LoadSpectrum, which may involve different
-        frequencies than the calibration itself. Here we get which elements to actually use."""
-        mask = []
-        for i, flag in enumerate(self.calobs.open.spectrum.freq.mask):
-            if not flag:
-                continue
-            else:
-                mask.append(self.calobs.freq.mask[i])
+        """The data mask to use.
+
+        The data itself is averaged_Q from the LoadSpectrum, which may involve different
+        frequencies than the calibration itself. Here we get which elements to actually use.
+        """
+        mask = [
+            self.calobs.freq.mask[i]
+            for i, flag in enumerate(self.calobs.open.spectrum.freq.mask)
+            if flag
+        ]
         return np.array(mask, dtype=bool)
 
     @cached_property
@@ -115,33 +111,18 @@ class _CalibrationQ(Component):
         params = self._fill_params(params)
 
         # Put coefficients in backwards, because that's how the polynomial works.
-        c1_poly = np.poly1d(
-            [params[f"C1_{i}"] for i in range(self.calobs.cterms)[::-1]]
-        )
-        c2_poly = np.poly1d(
-            [params[f"C2_{i}"] for i in range(self.calobs.cterms)[::-1]]
-        )
-        tunc_poly = np.poly1d(
-            [params[f"Tunc_{i}"] for i in range(self.calobs.wterms)[::-1]]
-        )
-        tcos_poly = np.poly1d(
-            [params[f"Tcos_{i}"] for i in range(self.calobs.wterms)[::-1]]
-        )
-        tsin_poly = np.poly1d(
-            [params[f"Tsin_{i}"] for i in range(self.calobs.wterms)[::-1]]
-        )
+        c1_poly = np.poly1d([params[f"C1_{i}"] for i in range(self.calobs.cterms)[::-1]])
+        c2_poly = np.poly1d([params[f"C2_{i}"] for i in range(self.calobs.cterms)[::-1]])
+        tunc_poly = np.poly1d([params[f"Tunc_{i}"] for i in range(self.calobs.wterms)[::-1]])
+        tcos_poly = np.poly1d([params[f"Tcos_{i}"] for i in range(self.calobs.wterms)[::-1]])
+        tsin_poly = np.poly1d([params[f"Tsin_{i}"] for i in range(self.calobs.wterms)[::-1]])
 
         return c1_poly, c2_poly, tunc_poly, tcos_poly, tsin_poly
 
 
 @attr.s(frozen=True)
 class CalibratorQ(_CalibrationQ):
-    """Component providing calibration Q_P for calibrator sources ambient, hot_load,
-    open, short.
-
-    Parameters
-    ----------
-    """
+    """Component providing calibration Q_P for calibrator sources."""
 
     @cached_property
     def s11_models(self):
@@ -156,7 +137,7 @@ class CalibratorQ(_CalibrationQ):
     @cached_property
     def Ks(self):
         return {
-            name: rcf.get_K(self.s11_models["lna"], self.s11_models[name])
+            name: nw.get_K(self.s11_models["lna"], self.s11_models[name])
             for name in self.s11_models
             if name != "lna"
         }
@@ -168,7 +149,7 @@ class CalibratorQ(_CalibrationQ):
         for name, source in self.calobs._loads.items():
             temp_ant = source.spectrum.temp_ave
 
-            a, b = rcf.get_linear_coefficients_from_K(
+            a, b = nw.get_linear_coefficients_from_K(
                 self.Ks[name],
                 scale(self.freq_recentred),
                 offset(self.freq_recentred),
@@ -190,8 +171,7 @@ class CalibratorQ(_CalibrationQ):
 
 @attr.s(frozen=True)
 class AntennaQ(_CalibrationQ):
-    """Component providing calibration Q_P for calibrator sources ambient, hot_load,
-    open, short.
+    """Component providing calibration Q_P for calibrator sources.
 
     Parameters
     ----------
@@ -217,7 +197,7 @@ class AntennaQ(_CalibrationQ):
         temp_ant = sum(v for k, v in ctx.items() if k.endswith("spectrum"))
         gamma_ant = self.antenna.get_s11_correction_model()(self.freq)
 
-        return power_ratio(
+        return nw.power_ratio(
             scale=scale,
             offset=offset,
             temp_cos=tc,
