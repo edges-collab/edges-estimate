@@ -85,7 +85,7 @@ class RadiometricAndWhiteNoise(MultiComponentChi2):
         Parameter("sigma_wn", 0.0, min=0, latex=r"\sigma_{\rm wn}"),
     ]
 
-    integration_time = attr.ib(converter=float, kw_only=True)  # in seconds!
+    integration_time = attr.ib(converter=np.float64, kw_only=True)  # in seconds!
     weights = attr.ib(1, kw_only=True)
 
     @weights.validator
