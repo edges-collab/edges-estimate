@@ -14,7 +14,7 @@ def phenom_model(freqs, amp, tau, w, nu0):
 
 def simple_gaussian(freqs, A, nu0, w):
     """fit a simple gaussian."""
-   
+
     return -A*np.exp(-(freqs-nu0)**2/(2*w**2)
 
 
