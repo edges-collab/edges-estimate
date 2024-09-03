@@ -7,7 +7,7 @@ from yabf import Component, Parameter
 
 
 def damped_oscillation_model(freqs, period, damping_index, amp_sin, amp_cos):
-    """Damped sinusoid systematic model from Sims+2019."""
+    """Damped sinusoid systematic model from Sims+2021."""
     phase = 2 * np.pi * (freqs / period)
     f_c = freqs[0] + (freqs[-1] - freqs[0]) / 2
     return (freqs / f_c) ** damping_index * (amp_sin * np.sin(phase) + amp_cos * np.cos(phase))
