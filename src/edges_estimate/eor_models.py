@@ -3,12 +3,19 @@
 import attr
 import numpy as np
 from yabf import Component, Parameter
+from astropy import units as u
 
 
 def phenom_model(freqs, amp, tau, w, nu0):
     """Really bad inverse gaussian thing."""
     B = 4 * (freqs - nu0) ** 2 / w**2 * np.log(-1 / tau * np.log((1 + np.exp(-tau)) / 2))
     return -amp * (1 - np.exp(-tau * np.exp(B))) / (1 - np.exp(-tau))
+
+
+def simple_gaussian(freqs, A, nu0, w):
+    """fit a simple gaussian."""
+
+    return -A*np.exp(-(freqs-nu0)**2/(2*w**2)
 
 
 @attr.s
@@ -26,6 +33,25 @@ class AbsorptionProfile(Component):
 
     def calculate(self, ctx, **params):
         return phenom_model(self.freqs, **params)
+
+    def spectrum(self, ctx, **params):
+        return ctx["eor_spectrum"]
+
+
+@attr.s
+class GaussianAbsorptionProfile(Component):
+    provides = ["eor_spectrum"]
+
+    base_parameters = [
+        Parameter("A", 0.5, min=0, latex=r"a_{21}"),
+        Parameter("w", 17.0, min=0),
+        Parameter("nu0", 75, min=0, latex=r"\nu_0"),
+    ]
+
+    freqs: np.ndarray = attr.ib(kw_only=True, eq=attr.cmp_using(eq=np.array_equal))
+
+    def calculate(self, ctx, **params):
+        return simple_gaussian(self.freqs, **params)
 
     def spectrum(self, ctx, **params):
         return ctx["eor_spectrum"]
