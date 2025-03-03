@@ -9,9 +9,10 @@ of each of these models, ensuring that the smaller model has a better BIC.
 
 import numpy as np
 import pytest
-from edges_estimate.likelihoods import NoiseWaveLikelihood
 from numdifftools import Hessian
 from yabf import run_map
+
+from edges_estimate.likelihoods import NoiseWaveLikelihood
 
 
 @pytest.fixture(scope="module")
