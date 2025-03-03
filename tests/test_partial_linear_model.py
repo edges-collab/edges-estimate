@@ -3,10 +3,11 @@ import matplotlib.pyplot as mpl
 import numpy as np
 import pytest
 from edges_cal.modelling import Polynomial
-from edges_estimate.likelihoods import PartialLinearModel
-from edges_estimate.plots import get_evidence
 from yabf import Component, Parameter, run_map
 from yabf.samplers.polychord import polychord
+
+from edges_estimate.likelihoods import PartialLinearModel
+from edges_estimate.plots import get_evidence
 
 
 @attr.s(kw_only=True)
@@ -183,7 +184,7 @@ def test_correct_result_larger_model_scaled(scaled_large_plm):
     np.testing.assert_allclose(fit.model_parameters[-1], 0, rtol=0, atol=0.1)
 
 
-@pytest.mark.slow()
+@pytest.mark.slow
 def test_polychord_evidence(simple_plm, large_plm, tmp_path_factory):
     direc = tmp_path_factory
 
@@ -209,7 +210,7 @@ def test_polychord_evidence(simple_plm, large_plm, tmp_path_factory):
     assert large_lnz <= correct_lnz
 
 
-@pytest.mark.slow()
+@pytest.mark.slow
 def test_polychord_evidence_scaled(scaled_plm, scaled_large_plm, tmp_path):
     direc = tmp_path / "cache"
 

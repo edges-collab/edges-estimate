@@ -3,24 +3,25 @@ import numpy as np
 import pytest
 from astropy import units as u
 from edges_cal.modelling import Polynomial, UnitTransform
-from edges_estimate.eor_models import AbsorptionProfile
-from edges_estimate.likelihoods import DataCalibrationLikelihood
 from helpers import get_tns_model, sim_antenna_q
 from scipy import stats
 from yabf import run_map
 
+from edges_estimate.eor_models import AbsorptionProfile
+from edges_estimate.likelihoods import DataCalibrationLikelihood
 
-@pytest.fixture()
+
+@pytest.fixture
 def calobs_freq(calobs):
     return calobs.freq.freq.to_value("MHz")
 
 
-@pytest.fixture()
+@pytest.fixture
 def calobs_freq_smoothed8(calobs):
     return calobs.freq.freq[::8].to_value("MHz")
 
 
-@pytest.fixture()
+@pytest.fixture
 def sky_freq():
     return np.linspace(58, 93, 120)
 
