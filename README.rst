@@ -12,8 +12,9 @@ edges-estimate
    :alt: pre-commit
 
 
-### NOTE: this repo is deprecated. Most functionality is included in `edges-analysis`
 
+NOTE: this repo is deprecated. Most functionality is included in `edges-analysis`
+---------------------------------------------------------------------------------
 
 Features
 --------
