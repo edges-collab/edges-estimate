@@ -298,7 +298,7 @@ class PartialLinearModel(Chi2, Likelihood):
             print(params, lnl)
 
         if np.isnan(lnl) or np.isinf(lnl):
-            logger.warn(f"Got bad log-likelihood: {lnl} for params: {params}")
+            logger.warning(f"Got bad log-likelihood: {lnl} for params: {params}")
 
         return lnl
 
